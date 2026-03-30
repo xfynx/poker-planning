@@ -27,7 +27,13 @@ type RoomState = {
   aggregates: { mode: "overall" | "byRole"; groups: Array<{ key: string; label: string; count: number; mean?: number; median?: number }> };
 };
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+/** В dev — из `.env.development`; в prod-сборке без env — тот же host:port, что и страница (nginx проксирует API). */
+function getApiBase(): string {
+  const v = import.meta.env.VITE_API_URL;
+  if (typeof v === "string" && v.trim().length > 0) return v.trim();
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
+}
 
 export function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -42,7 +48,8 @@ export function App() {
   const [selectedVote, setSelectedVote] = useState<string | null>(null);
 
   useEffect(() => {
-    const s = io(API_URL, { transports: ["websocket"] });
+    const base = getApiBase();
+    const s = io(base, { transports: ["websocket"] });
     setSocket(s);
     s.on("room:state", (st: RoomState) => {
       setState(st);
@@ -67,7 +74,7 @@ export function App() {
     const controller = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`${API_URL}/rooms/${encodeURIComponent(code)}`, { signal: controller.signal });
+        const res = await fetch(`${getApiBase()}/rooms/${encodeURIComponent(code)}`, { signal: controller.signal });
         if (!res.ok) {
           setRolesEnabledForJoin(null);
           return;
@@ -90,7 +97,7 @@ export function App() {
   }, [state, userId]);
 
   async function createRoom() {
-    const res = await fetch(`${API_URL}/rooms`, {
+    const res = await fetch(`${getApiBase()}/rooms`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ rolesEnabled: createRolesEnabled })

@@ -9,15 +9,21 @@ import { computeAggregates } from "./domain/stats.js";
 import type { PublicRoomState, Role, User, VoteAggregates } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
-const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:5173";
+const CORS_ORIGIN = process.env.CORS_ORIGIN;
 
 const app = Fastify({ logger: true });
 
-await app.register(cors, { origin: CORS_ORIGIN, credentials: true });
+// Если CORS_ORIGIN не задан — отражаем Origin запроса (удобно для деплоя по IP / за reverse-proxy)
+await app.register(cors, {
+  origin: CORS_ORIGIN ? CORS_ORIGIN : true,
+  credentials: true
+});
 
 const httpServer = app.server;
 const io = new SocketIOServer(httpServer, {
-  cors: { origin: CORS_ORIGIN, credentials: true }
+  cors: CORS_ORIGIN
+    ? { origin: CORS_ORIGIN, credentials: true }
+    : { origin: (origin, cb) => cb(null, true), credentials: true }
 });
 
 const redis = createRedis();
