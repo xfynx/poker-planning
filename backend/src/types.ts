@@ -18,18 +18,10 @@ export type Room = {
   revealed: boolean;
 };
 
-export type PublicRoomState = {
-  room: Pick<Room, "code" | "hostId" | "createdAt" | "rolesEnabled" | "deck" | "activeRoundId" | "roundTitle" | "revealed">;
-  users: User[];
-  votesRevealed: Record<string, string | null>;
-  voteStatus: Record<string, boolean>;
-  aggregates: VoteAggregates;
-};
-
 export type VoteAggregates = {
   mode: "overall" | "byRole";
   groups: Array<{
-    key: string; // role or "NoRole"
+    key: string;
     label: string;
     count: number;
     mean?: number;
@@ -37,3 +29,25 @@ export type VoteAggregates = {
   }>;
 };
 
+/** Снимок завершённого раунда (после «Открыть карты»). */
+export type RoundHistoryEntry = {
+  roundId: string;
+  title: string;
+  revealedAt: number;
+  votes: Array<{
+    userId: string;
+    name: string;
+    role?: Role;
+    value: string | null;
+  }>;
+  aggregates: VoteAggregates;
+};
+
+export type PublicRoomState = {
+  room: Pick<Room, "code" | "hostId" | "createdAt" | "rolesEnabled" | "deck" | "activeRoundId" | "roundTitle" | "revealed">;
+  users: User[];
+  votesRevealed: Record<string, string | null>;
+  voteStatus: Record<string, boolean>;
+  aggregates: VoteAggregates;
+  history: RoundHistoryEntry[];
+};

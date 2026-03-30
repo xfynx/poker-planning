@@ -14,7 +14,7 @@ body {
 a { color: inherit; }
 
 .container {
-  max-width: 980px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: 24px;
 }
@@ -89,5 +89,170 @@ button:disabled {
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.06);
+}
+
+.layoutMain {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.sideColumn {
+  width: 380px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sideCard { padding: 14px; }
+
+.shareRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.shareInput {
+  flex: 1;
+  min-width: 200px;
+  font-size: 13px;
+}
+
+.codeInline {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  background: rgba(255,255,255,0.08);
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.inviteBanner {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.inviteBannerTitle {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.hintWarn {
+  font-size: 13px;
+  color: rgba(251, 191, 36, 0.95);
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.resultHero {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.18), rgba(99, 102, 241, 0.12));
+  margin-bottom: 8px;
+}
+
+.resultHeroTitle {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(230,232,239,0.9);
+  margin-bottom: 12px;
+}
+
+.resultHeroGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.resultHeroCard {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.resultHeroLabel {
+  font-weight: 800;
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.resultHeroNums {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.resultStatName {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(230,232,239,0.6);
+  margin-bottom: 4px;
+}
+
+.resultStatVal {
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.resultHeroMeta {
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(230,232,239,0.65);
+}
+
+.resultPending {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px dashed rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.04);
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.historyList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.historyItem {
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+}
+
+.historyItemTitle {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.historyItemMeta {
+  font-size: 12px;
+  color: rgba(230,232,239,0.55);
+  margin-bottom: 6px;
+}
+
+.historyItemSummary {
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(230,232,239,0.78);
 }
 

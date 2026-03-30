@@ -37,7 +37,7 @@ export function computeAggregates(opts: {
       groups: [
         {
           key: "Overall",
-          label: "Все",
+          label: "Все участники",
           count: nums.length,
           mean: mean(nums),
           median: median(nums)

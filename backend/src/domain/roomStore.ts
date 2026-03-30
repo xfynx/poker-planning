@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Role, Room, User } from "../types.js";
+import type { Role, Room, RoundHistoryEntry, User } from "../types.js";
 import { DEFAULT_DECK } from "./deck.js";
 
 export const CreateRoomInput = z.object({
@@ -25,6 +25,9 @@ export type RoomStore = {
   getVotes(code: string, roundId: string): Promise<Record<string, string | null>>;
   setVote(code: string, roundId: string, userId: string, value: string | null): Promise<void>;
   clearVotes(code: string, roundId: string): Promise<void>;
+
+  appendHistory(code: string, entry: RoundHistoryEntry): Promise<void>;
+  listHistory(code: string): Promise<RoundHistoryEntry[]>;
 };
 
 function roomKey(code: string) {
@@ -36,13 +39,29 @@ function usersKey(code: string) {
 function votesKey(code: string, roundId: string) {
   return `room:${code}:votes:${roundId}`;
 }
+function historyKey(code: string) {
+  return `room:${code}:history`;
+}
 
-export function createRoomStore(redis: { get: any; set: any; expire: any; hset: any; hdel: any; hgetall: any; del: any; exists: any }) {
+export function createRoomStore(redis: {
+  get: any;
+  set: any;
+  expire: any;
+  hset: any;
+  hdel: any;
+  hgetall: any;
+  del: any;
+  exists: any;
+  lpush: any;
+  lrange: any;
+  ltrim: any;
+}) {
   const TTL_SECONDS = 60 * 60 * 24;
 
   async function touch(code: string) {
     await redis.expire(roomKey(code), TTL_SECONDS);
     await redis.expire(usersKey(code), TTL_SECONDS);
+    await redis.expire(historyKey(code), TTL_SECONDS);
   }
 
   return {
@@ -121,6 +140,26 @@ export function createRoomStore(redis: { get: any; set: any; expire: any; hset: 
     async clearVotes(code: string, roundId: string) {
       await redis.del(votesKey(code, roundId));
       await touch(code);
+    },
+
+    async appendHistory(code: string, entry: RoundHistoryEntry) {
+      await redis.lpush(historyKey(code), JSON.stringify(entry));
+      await redis.ltrim(historyKey(code), 0, 99);
+      await redis.expire(historyKey(code), TTL_SECONDS);
+      await touch(code);
+    },
+
+    async listHistory(code: string) {
+      const raw = (await redis.lrange(historyKey(code), 0, 49)) as string[];
+      const out: RoundHistoryEntry[] = [];
+      for (const s of raw) {
+        try {
+          out.push(JSON.parse(s) as RoundHistoryEntry);
+        } catch {
+          // skip
+        }
+      }
+      return out;
     }
   } satisfies RoomStore;
 }

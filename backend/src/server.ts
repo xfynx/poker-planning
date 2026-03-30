@@ -6,7 +6,7 @@ import type { Socket } from "socket.io";
 import { createRedis } from "./redis.js";
 import { createRoomStore, CreateRoomInput, JoinRoomInput } from "./domain/roomStore.js";
 import { computeAggregates } from "./domain/stats.js";
-import type { PublicRoomState, Role, User, VoteAggregates } from "./types.js";
+import type { PublicRoomState, Role, RoundHistoryEntry, User, VoteAggregates } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const CORS_ORIGIN = process.env.CORS_ORIGIN;
@@ -23,7 +23,10 @@ const httpServer = app.server;
 const io = new SocketIOServer(httpServer, {
   cors: CORS_ORIGIN
     ? { origin: CORS_ORIGIN, credentials: true }
-    : { origin: (origin, cb) => cb(null, true), credentials: true }
+    : {
+        origin: (_origin: string | undefined, cb: (err: Error | null, ok?: boolean) => void) => cb(null, true),
+        credentials: true
+      }
 });
 
 const redis = createRedis();
@@ -118,8 +121,27 @@ io.on("connection", (socket: Socket) => {
     const room = await store.getRoom(ctx.roomCode);
     if (!room) return ack?.({ ok: false, error: "room_not_found" });
     if (room.hostId !== ctx.userId) return ack?.({ ok: false, error: "forbidden" });
+    if (room.revealed) return ack?.({ ok: false, error: "already_revealed" });
     room.revealed = true;
     await store.setRoom(room);
+
+    const users = await store.listUsers(room.code);
+    const votes = await store.getVotes(room.code, room.activeRoundId);
+    const aggregates = computeAggregates({ rolesEnabled: room.rolesEnabled, users, votesByUserId: votes });
+    const entry: RoundHistoryEntry = {
+      roundId: room.activeRoundId,
+      title: room.roundTitle || "",
+      revealedAt: Date.now(),
+      votes: users.map((u) => ({
+        userId: u.id,
+        name: u.name,
+        role: u.role,
+        value: votes[u.id] ?? null
+      })),
+      aggregates
+    };
+    await store.appendHistory(room.code, entry);
+
     await emitRoomState(room.code);
     return ack?.({ ok: true });
   });
@@ -151,6 +173,7 @@ async function emitRoomState(code: string) {
   if (!room) return;
   const users = await store.listUsers(code);
   const votes = await store.getVotes(code, room.activeRoundId);
+  const history = await store.listHistory(code);
 
   const voteStatus: Record<string, boolean> = {};
   for (const u of users) voteStatus[u.id] = typeof votes[u.id] === "string" || votes[u.id] === null;
@@ -178,7 +201,8 @@ async function emitRoomState(code: string) {
     users,
     votesRevealed,
     voteStatus,
-    aggregates
+    aggregates,
+    history
   };
 
   io.to(code).emit("room:state", state);
