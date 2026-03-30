@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { io, Socket } from "socket.io-client";
+
+const SESSION_STORAGE_KEY = "pokerplanning_session_v1";
 
 type Role = "BA" | "BE" | "FE" | "SA" | "QA" | "Other";
 const ROLE_OPTIONS: Array<{ value: Role | ""; label: string }> = [
@@ -31,6 +33,7 @@ type RoomState = {
     deck: string[];
     roundTitle: string;
     revealed: boolean;
+    activeRoundId: string;
   };
   users: Array<{ id: string; name: string; role?: Role }>;
   votesRevealed: Record<string, string | null>;
@@ -44,6 +47,34 @@ function getApiBase(): string {
   if (typeof v === "string" && v.trim().length > 0) return v.trim();
   if (typeof window !== "undefined") return window.location.origin;
   return "";
+}
+
+function saveSession(roomCode: string, userId: string) {
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ roomCode, userId }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadSession(): { roomCode: string; userId: string } | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as { roomCode?: string; userId?: string };
+    if (typeof o.roomCode === "string" && typeof o.userId === "string") return { roomCode: o.roomCode, userId: o.userId };
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function clearSession() {
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 function fmtNum(v: number | undefined): string {
@@ -81,6 +112,9 @@ export function App() {
   const [selectedVote, setSelectedVote] = useState<string | null>(null);
   const [copyHint, setCopyHint] = useState<string | null>(null);
 
+  const prevRoundIdRef = useRef<string | null>(null);
+  const titleFocusedRef = useRef(false);
+  const titleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (slug) setRoomCode(slug.toUpperCase());
   }, [slug]);
@@ -89,13 +123,42 @@ export function App() {
     const base = getApiBase();
     const s = io(base, { transports: ["websocket"] });
     setSocket(s);
+
+    function resumeIfNeeded() {
+      const sess = loadSession();
+      if (!sess) return;
+      const m = window.location.pathname.match(/^\/r\/([^/]+)\/?$/i);
+      const pathCode = m ? m[1].toUpperCase() : null;
+      if (!pathCode || pathCode !== sess.roomCode.toUpperCase()) return;
+      s.emit("room:resume", { roomCode: pathCode, userId: sess.userId }, (ack: { ok?: boolean; userId?: string }) => {
+        if (ack?.ok && ack.userId) setUserId(ack.userId);
+        else clearSession();
+      });
+    }
+
+    s.on("connect", resumeIfNeeded);
     s.on("room:state", (st: RoomState) => {
-      const next = st.history ? st : { ...st, history: [] as RoundHistoryEntry[] };
+      const next: RoomState = st.history ? st : { ...st, history: [] as RoundHistoryEntry[] };
+      if (!next.room.activeRoundId) {
+        (next.room as { activeRoundId?: string }).activeRoundId = "";
+      }
+
+      const rid = next.room.activeRoundId;
+      if (prevRoundIdRef.current !== null && prevRoundIdRef.current !== rid) {
+        setSelectedVote(null);
+      }
+      prevRoundIdRef.current = rid;
+
+      if (!titleFocusedRef.current) {
+        setTitleDraft(next.room.roundTitle ?? "");
+      }
+
       setState(next);
       setRolesEnabledForJoin(next.room.rolesEnabled);
-      setTitleDraft(next.room.roundTitle ?? "");
     });
     return () => {
+      if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
+      s.off("connect", resumeIfNeeded);
       s.disconnect();
     };
   }, []);
@@ -166,13 +229,26 @@ export function App() {
       "room:join",
       { roomCode: roomCode.trim().toUpperCase(), name: name.trim(), role: role || undefined },
       (ack: { ok?: boolean; userId?: string }) => {
-        if (!ack?.ok) return;
-        setUserId(ack.userId!);
-        setSelectedVote(null);
+        if (!ack?.ok || !ack.userId) return;
         const c = roomCode.trim().toUpperCase();
+        saveSession(c, ack.userId);
+        setUserId(ack.userId);
+        setSelectedVote(null);
         if (c) navigate(`/r/${c}`, { replace: true });
       }
     );
+  }
+
+  function leaveRoom() {
+    if (!socket || !userId) return;
+    const code = state?.room.code ?? roomCode.trim().toUpperCase();
+    socket.emit("room:leave", {}, () => {});
+    clearSession();
+    setUserId(null);
+    setState(null);
+    prevRoundIdRef.current = null;
+    if (code) navigate(`/r/${code}`, { replace: true });
+    else navigate("/", { replace: true });
   }
 
   function setVote(v: string) {
@@ -192,10 +268,32 @@ export function App() {
     socket.emit("round:reset", {});
   }
 
-  function setTitle() {
-    if (!socket) return;
-    socket.emit("round:setTitle", { title: titleDraft });
-  }
+  const scheduleTitleEmit = useCallback(
+    (title: string) => {
+      if (!socket) return;
+      if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
+      titleDebounceRef.current = setTimeout(() => {
+        socket.emit("round:setTitle", { title });
+      }, 350);
+    },
+    [socket]
+  );
+
+  const onTitleDraftChange = useCallback(
+    (v: string) => {
+      setTitleDraft(v);
+      scheduleTitleEmit(v);
+    },
+    [scheduleTitleEmit]
+  );
+
+  const onTitleFocus = useCallback(() => {
+    titleFocusedRef.current = true;
+  }, []);
+
+  const onTitleBlur = useCallback(() => {
+    titleFocusedRef.current = false;
+  }, []);
 
   return (
     <div className="container">
@@ -206,6 +304,11 @@ export function App() {
         <div className="spacer" />
         {state?.room?.code ? <span className="pill">Комната: {state.room.code}</span> : null}
         {isHost ? <span className="pill">Ведущий</span> : null}
+        {userId ? (
+          <button type="button" className="secondary" onClick={leaveRoom}>
+            Выйти
+          </button>
+        ) : null}
       </div>
 
       {!userId ? (
@@ -280,17 +383,17 @@ export function App() {
           ) : null}
 
           <div className="muted" style={{ marginTop: 12 }}>
-            Отправьте коллегам ссылку вида <code className="codeInline">/r/КОД</code> — они смогут войти сразу по ней.
+            Отправьте коллегам ссылку вида <code className="codeInline">/r/КОД</code> — они смогут войти сразу по ней. Сессия сохраняется в этом браузере.
           </div>
         </div>
       ) : (
         <RoomView
           state={state}
           userId={userId}
-          isHost={isHost}
           titleDraft={titleDraft}
-          setTitleDraft={setTitleDraft}
-          onSetTitle={setTitle}
+          onTitleDraftChange={onTitleDraftChange}
+          onTitleFocus={onTitleFocus}
+          onTitleBlur={onTitleBlur}
           onVote={setVote}
           selectedVote={selectedVote}
           onReveal={reveal}
@@ -307,10 +410,10 @@ export function App() {
 function RoomView(props: {
   state: RoomState | null;
   userId: string;
-  isHost: boolean;
   titleDraft: string;
-  setTitleDraft: (v: string) => void;
-  onSetTitle: () => void;
+  onTitleDraftChange: (v: string) => void;
+  onTitleFocus: () => void;
+  onTitleBlur: () => void;
   onVote: (v: string) => void;
   selectedVote: string | null;
   onReveal: () => void;
@@ -319,7 +422,7 @@ function RoomView(props: {
   onCopyInvite: (url: string) => void;
   copyHint: string | null;
 }) {
-  const { state, userId, isHost } = props;
+  const { state, userId } = props;
   if (!state) return <div className="card">Подключаемся…</div>;
 
   const me = state.users.find((u) => u.id === userId);
@@ -359,20 +462,21 @@ function RoomView(props: {
           <span className="pill">{state.room.revealed ? "Карты открыты" : "Карты скрыты"}</span>
         </div>
 
-        <div className="row" style={{ alignItems: "end", marginBottom: 12 }}>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div className="muted" style={{ marginBottom: 6 }}>
-              Текущая задача / тикет
-            </div>
-            <input
-              value={props.titleDraft}
-              onChange={(e) => props.setTitleDraft(e.target.value)}
-              placeholder="Например: PROJ-123 — Авторизация"
-            />
+        <div style={{ marginBottom: 12 }}>
+          <div className="muted" style={{ marginBottom: 6 }}>
+            Текущая задача / тикет
           </div>
-          <button onClick={props.onSetTitle} disabled={!isHost} title="Укажите задачу до оценки — она попадёт в историю после открытия карт">
-            Сохранить
-          </button>
+          <input
+            style={{ width: "100%", boxSizing: "border-box" }}
+            value={props.titleDraft}
+            onChange={(e) => props.onTitleDraftChange(e.target.value)}
+            onFocus={props.onTitleFocus}
+            onBlur={props.onTitleBlur}
+            placeholder="Например: PROJ-123 — Авторизация (сохраняется при вводе)"
+          />
+          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+            Любой участник может менять название; изменения видны всем сразу.
+          </div>
         </div>
         {!props.titleDraft.trim() ? (
           <div className="hintWarn">Рекомендуем указать название задачи — так запись в истории будет понятной.</div>
@@ -406,7 +510,7 @@ function RoomView(props: {
           </div>
         ) : (
           <div className="resultPending">
-            <strong>Оценка в процессе.</strong> После того как все поставят карты, ведущий нажимает «Открыть карты» — здесь появится итог.
+            <strong>Оценка в процессе.</strong> Когда все поставят карты, любой участник может нажать «Открыть карты» — здесь появится итог.
           </div>
         )}
 
@@ -430,10 +534,10 @@ function RoomView(props: {
         <div style={{ height: 12 }} />
 
         <div className="row">
-          <button onClick={props.onReveal} disabled={!isHost || state.room.revealed}>
+          <button onClick={props.onReveal} disabled={state.room.revealed}>
             Открыть карты
           </button>
-          <button className="secondary" onClick={props.onReset} disabled={!isHost}>
+          <button className="secondary" onClick={props.onReset}>
             Новый раунд
           </button>
         </div>

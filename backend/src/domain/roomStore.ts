@@ -12,6 +12,11 @@ export const JoinRoomInput = z.object({
   role: z.enum(["BA", "BE", "FE", "SA", "QA", "Other"]).optional()
 });
 
+export const ResumeRoomInput = z.object({
+  roomCode: z.string().min(2).max(12),
+  userId: z.string().min(2).max(48)
+});
+
 export type RoomStore = {
   createRoom(rolesEnabled: boolean): Promise<Room>;
   getRoom(code: string): Promise<Room | null>;

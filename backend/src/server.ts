@@ -4,7 +4,7 @@ import cors from "@fastify/cors";
 import { Server as SocketIOServer } from "socket.io";
 import type { Socket } from "socket.io";
 import { createRedis } from "./redis.js";
-import { createRoomStore, CreateRoomInput, JoinRoomInput } from "./domain/roomStore.js";
+import { createRoomStore, CreateRoomInput, JoinRoomInput, ResumeRoomInput } from "./domain/roomStore.js";
 import { computeAggregates } from "./domain/stats.js";
 import type { PublicRoomState, Role, RoundHistoryEntry, User, VoteAggregates } from "./types.js";
 
@@ -83,6 +83,25 @@ io.on("connection", (socket: Socket) => {
     return ack?.({ ok: true, userId, roomCode: room.code });
   });
 
+  socket.on("room:resume", async (payload: unknown, ack?: (v: any) => void) => {
+    const parsed = ResumeRoomInput.safeParse(payload);
+    if (!parsed.success) return ack?.({ ok: false, error: "bad_request" });
+
+    const code = parsed.data.roomCode.toUpperCase();
+    const room = await store.getRoom(code);
+    if (!room) return ack?.({ ok: false, error: "room_not_found" });
+
+    const users = await store.listUsers(code);
+    const ok = users.some((u) => u.id === parsed.data.userId);
+    if (!ok) return ack?.({ ok: false, error: "session_invalid" });
+
+    ctx.userId = parsed.data.userId;
+    ctx.roomCode = room.code;
+    socket.join(room.code);
+    await emitRoomState(room.code);
+    return ack?.({ ok: true, userId: parsed.data.userId, roomCode: room.code });
+  });
+
   socket.on("room:leave", async (_payload: unknown, ack?: (v: any) => void) => {
     if (!ctx.roomCode || !ctx.userId) return ack?.({ ok: true });
     await store.removeUser(ctx.roomCode, ctx.userId);
@@ -95,7 +114,6 @@ io.on("connection", (socket: Socket) => {
     if (!ctx.roomCode || !ctx.userId) return ack?.({ ok: false, error: "not_joined" });
     const room = await store.getRoom(ctx.roomCode);
     if (!room) return ack?.({ ok: false, error: "room_not_found" });
-    if (room.hostId !== ctx.userId) return ack?.({ ok: false, error: "forbidden" });
     const title = typeof payload?.title === "string" ? payload.title.slice(0, 200) : "";
     room.roundTitle = title;
     await store.setRoom(room);
@@ -120,7 +138,6 @@ io.on("connection", (socket: Socket) => {
     if (!ctx.roomCode || !ctx.userId) return ack?.({ ok: false, error: "not_joined" });
     const room = await store.getRoom(ctx.roomCode);
     if (!room) return ack?.({ ok: false, error: "room_not_found" });
-    if (room.hostId !== ctx.userId) return ack?.({ ok: false, error: "forbidden" });
     if (room.revealed) return ack?.({ ok: false, error: "already_revealed" });
     room.revealed = true;
     await store.setRoom(room);
@@ -150,7 +167,6 @@ io.on("connection", (socket: Socket) => {
     if (!ctx.roomCode || !ctx.userId) return ack?.({ ok: false, error: "not_joined" });
     const room = await store.getRoom(ctx.roomCode);
     if (!room) return ack?.({ ok: false, error: "room_not_found" });
-    if (room.hostId !== ctx.userId) return ack?.({ ok: false, error: "forbidden" });
 
     await store.clearVotes(room.code, room.activeRoundId);
     room.activeRoundId = `r_${Math.random().toString(36).slice(2, 10)}`;
@@ -162,9 +178,7 @@ io.on("connection", (socket: Socket) => {
   });
 
   socket.on("disconnect", async () => {
-    if (!ctx.roomCode || !ctx.userId) return;
-    await store.removeUser(ctx.roomCode, ctx.userId);
-    await emitRoomState(ctx.roomCode);
+    // Не удаляем участника: так сохраняется «сессия» при обновлении вкладки (см. room:resume).
   });
 });
 
