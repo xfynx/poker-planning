@@ -11,6 +11,8 @@ docker compose --profile dev up --build
 - Frontend: `http://localhost/` (порт **80**)
 - Backend: `http://localhost:3000/health`
 
+Запросы с браузера идут на тот же хост, что и страница; Vite проксирует `/rooms`, `/health` и `/socket.io` в сервис `backend` (`VITE_PROXY_TARGET`). Так работает вход по IP/домену, а не только через `localhost:3000`.
+
 ### Smoke test (dev)
 
 - **Создать комнату**: на главной нажать “Создать комнату”, при необходимости включить/выключить “Использовать роли”.

@@ -4,8 +4,12 @@
   --pp-bg-1: #e0f2fe;
   --pp-bg-2: #f5f3ff;
   --pp-bg-3: #ecfdf5;
-  --pp-surface: rgba(255, 255, 255, 0.82);
+  --pp-surface: #ffffff;
   --pp-surface-solid: #ffffff;
+  --pp-field: #1e293b;
+  --pp-field-border: #334155;
+  --pp-field-text: #f1f5f9;
+  --pp-field-placeholder: #94a3b8;
   --pp-text: #0f172a;
   --pp-text-muted: #64748b;
   --pp-accent: #0d9488;
@@ -116,13 +120,28 @@ body {
   padding-bottom: 2.5rem;
 }
 
+.pp-inline-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pp-inline-row-end {
+  justify-content: flex-end;
+}
+
+.pp-page-title {
+  color: #94a3b8 !important;
+  font-weight: 700 !important;
+}
+
 .pp-card {
   background: var(--pp-surface);
-  border-radius: var(--pp-radius);
-  box-shadow: var(--pp-shadow);
-  border: 1px solid rgba(255, 255, 255, 0.75);
-  padding: clamp(1.35rem, 3.5vw, 2.25rem);
-  backdrop-filter: blur(8px);
+  border-radius: 1.35rem;
+  box-shadow: 0 12px 40px -16px rgba(15, 23, 42, 0.18), 0 4px 14px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  padding: clamp(1.5rem, 3.5vw, 2.5rem);
 }
 
 .pp-card.is-narrow {
@@ -187,17 +206,27 @@ body {
 
 .app-root .input,
 .app-root .select select {
-  border-radius: var(--pp-radius-sm);
-  border-color: rgba(15, 23, 42, 0.12);
+  border-radius: 0.5rem;
+  background: var(--pp-field);
+  color: var(--pp-field-text);
+  border-color: var(--pp-field-border);
   box-shadow: none;
   font-size: 1rem;
-  min-height: 2.75rem;
+  min-height: 2.85rem;
+}
+
+.app-root .input::placeholder {
+  color: var(--pp-field-placeholder);
 }
 
 .app-root .input:focus,
 .app-root .select select:focus {
-  border-color: var(--pp-accent);
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.2);
+  border-color: #2dd4bf;
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.25);
+}
+
+.app-root .select select {
+  cursor: pointer;
 }
 
 .app-root .help {
@@ -211,9 +240,10 @@ body {
 }
 
 .app-root .button.is-primary {
-  background: linear-gradient(135deg, var(--pp-accent) 0%, #14b8a6 100%);
+  background: linear-gradient(135deg, #2ec4b6 0%, #14b8a6 100%);
+  color: #0f172a !important;
   border: none;
-  box-shadow: 0 4px 14px -4px rgba(13, 148, 136, 0.65);
+  box-shadow: 0 6px 20px -6px rgba(20, 184, 166, 0.55);
 }
 
 .app-root .button.is-primary:hover {
@@ -226,9 +256,14 @@ body {
 }
 
 .app-root .button.is-light {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #ffffff;
+  border: 2px solid #cbd5e1;
   color: var(--pp-text);
+}
+
+.app-root .button.is-light:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
 }
 
 .app-root .notification {
@@ -286,10 +321,10 @@ body {
 
 /* Боковые панели в комнате */
 .pp-side-card {
-  background: var(--pp-surface);
+  background: #ffffff;
   border-radius: var(--pp-radius);
   box-shadow: var(--pp-shadow);
-  border: 1px solid rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(226, 232, 240, 0.95);
   padding: 1.25rem 1.35rem;
   margin-bottom: 1rem;
 }

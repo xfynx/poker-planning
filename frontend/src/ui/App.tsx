@@ -52,9 +52,22 @@ type RoomState = {
   history: RoundHistoryEntry[];
 };
 
+/** Если пусто — относительные URL (Vite proxy в dev, nginx в prod). Иначе явный API (редко). */
 function getApiBase(): string {
   const v = import.meta.env.VITE_API_URL;
-  if (typeof v === "string" && v.trim().length > 0) return v.trim();
+  if (typeof v === "string" && v.trim().length > 0) return v.trim().replace(/\/$/, "");
+  return "";
+}
+
+function apiPath(path: string): string {
+  const b = getApiBase();
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return b ? `${b}${p}` : p;
+}
+
+function socketOrigin(): string {
+  const b = getApiBase();
+  if (b) return b;
   if (typeof window !== "undefined") return window.location.origin;
   return "";
 }
@@ -122,6 +135,7 @@ export function App() {
   const [selectedVote, setSelectedVote] = useState<string | null>(null);
   const [copyHint, setCopyHint] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [connBanner, setConnBanner] = useState<string | null>(null);
 
   const prevRoundIdRef = useRef<string | null>(null);
   const titleFocusedRef = useRef(false);
@@ -135,11 +149,20 @@ export function App() {
   }, [roomCode, name, role]);
 
   useEffect(() => {
-    const base = getApiBase();
-    const s = io(base, { transports: ["websocket"] });
+    const origin = socketOrigin();
+    const s = io(origin, { transports: ["websocket", "polling"] });
     setSocket(s);
 
-    function resumeIfNeeded() {
+    function onDisconnect(reason: string) {
+      if (reason === "io client disconnect") return;
+      setConnBanner("Связь с сервером прервана. Проверьте, что backend запущен, и обновите страницу.");
+    }
+    function onConnectError() {
+      setConnBanner("Не удаётся подключиться к серверу. Запустите backend (порт 3000) или Docker Compose.");
+    }
+
+    function onConnect() {
+      setConnBanner(null);
       const sess = loadSession();
       if (!sess) return;
       const m = window.location.pathname.match(/^\/r\/([^/]+)\/?$/i);
@@ -151,8 +174,7 @@ export function App() {
       });
     }
 
-    s.on("connect", resumeIfNeeded);
-    s.on("room:state", (st: RoomState) => {
+    function onRoomState(st: RoomState) {
       const next: RoomState = st.history ? st : { ...st, history: [] as RoundHistoryEntry[] };
       if (!next.room.activeRoundId) {
         (next.room as { activeRoundId?: string }).activeRoundId = "";
@@ -170,10 +192,18 @@ export function App() {
 
       setState(next);
       setRolesEnabledForJoin(next.room.rolesEnabled);
-    });
+    }
+
+    s.on("connect", onConnect);
+    s.on("disconnect", onDisconnect);
+    s.on("connect_error", onConnectError);
+    s.on("room:state", onRoomState);
     return () => {
       if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
-      s.off("connect", resumeIfNeeded);
+      s.off("connect", onConnect);
+      s.off("disconnect", onDisconnect);
+      s.off("connect_error", onConnectError);
+      s.off("room:state", onRoomState);
       s.disconnect();
     };
   }, []);
@@ -187,7 +217,7 @@ export function App() {
     const controller = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`${getApiBase()}/rooms/${encodeURIComponent(code)}`, { signal: controller.signal });
+        const res = await fetch(apiPath(`/rooms/${encodeURIComponent(code)}`), { signal: controller.signal });
         if (!res.ok) {
           setRolesEnabledForJoin(null);
           return;
@@ -236,13 +266,22 @@ export function App() {
   }
 
   async function createRoom() {
-    const res = await fetch(`${getApiBase()}/rooms`, {
+    setJoinError(null);
+    const res = await fetch(apiPath("/rooms"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ rolesEnabled: createRolesEnabled })
     });
-    const json = await res.json();
-    const code = json.code as string;
+    if (!res.ok) {
+      setJoinError("Сервер не отвечает. Убедитесь, что backend запущен.");
+      return;
+    }
+    const json = (await res.json()) as { code?: string };
+    const code = json.code;
+    if (!code) {
+      setJoinError("Некорректный ответ сервера при создании комнаты.");
+      return;
+    }
     setRoomCode(code);
     navigate(`/r/${code}`, { replace: true });
   }
@@ -356,9 +395,14 @@ export function App() {
 
       <main className="pp-main">
         <div className="container px-4">
+          {connBanner ? (
+            <div className="notification is-warning is-light mt-4 mb-0">
+              <p className="mb-0">{connBanner}</p>
+            </div>
+          ) : null}
           {!userId ? (
             <div className="pp-card is-narrow mt-5">
-              <h1 className="title is-4 mb-3" style={{ letterSpacing: "-0.02em" }}>
+              <h1 className="title is-4 mb-3 pp-page-title" style={{ letterSpacing: "-0.02em" }}>
                 Оценка усилий с командой
               </h1>
               {slug ? (
@@ -467,7 +511,7 @@ export function App() {
               <hr className="pp-divider" />
 
               <h2 className="title is-6 mb-3 has-text-grey">Новая комната</h2>
-              <div className="is-flex is-flex-wrap is-align-items-center" style={{ gap: "1rem" }}>
+              <div className="pp-inline-row">
                 <button type="button" className="button is-light" onClick={createRoom}>
                   Создать комнату
                 </button>
@@ -594,7 +638,7 @@ function RoomView(props: {
                 </div>
               </div>
               <div className="level-right">
-                <div className="is-flex is-flex-wrap" style={{ gap: "0.5rem", justifyContent: "flex-end" }}>
+                <div className="pp-inline-row pp-inline-row-end">
                   <span className="pp-chip">{state.room.rolesEnabled ? "Роли вкл" : "Роли выкл"}</span>
                   <span className="pp-chip is-accent">{state.room.revealed ? "Карты открыты" : "Карты скрыты"}</span>
                 </div>

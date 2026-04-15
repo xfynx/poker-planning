@@ -36,7 +36,7 @@ services:
       context: ./frontend
       target: dev
     environment:
-      - VITE_API_URL=http://localhost:3000
+      - VITE_PROXY_TARGET=http://backend:3000
     ports:
       - "80:5173"
     depends_on:
