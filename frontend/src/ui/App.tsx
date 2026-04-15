@@ -5,8 +5,18 @@ import { io, Socket } from "socket.io-client";
 const SESSION_STORAGE_KEY = "pokerplanning_session_v1";
 
 type Role = "BA" | "BE" | "FE" | "SA" | "QA" | "Other";
-const ROLE_OPTIONS: Array<{ value: Role | ""; label: string }> = [
+const ROLE_OPTIONS_OPTIONAL: Array<{ value: Role | ""; label: string }> = [
   { value: "", label: "Не указывать" },
+  { value: "BA", label: "BA" },
+  { value: "BE", label: "BE" },
+  { value: "FE", label: "FE" },
+  { value: "SA", label: "SA" },
+  { value: "QA", label: "QA" },
+  { value: "Other", label: "Other" }
+];
+
+const ROLE_OPTIONS_REQUIRED: Array<{ value: Role | ""; label: string }> = [
+  { value: "", label: "Выберите роль" },
   { value: "BA", label: "BA" },
   { value: "BE", label: "BE" },
   { value: "FE", label: "FE" },
@@ -111,6 +121,7 @@ export function App() {
   const [titleDraft, setTitleDraft] = useState("");
   const [selectedVote, setSelectedVote] = useState<string | null>(null);
   const [copyHint, setCopyHint] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   const prevRoundIdRef = useRef<string | null>(null);
   const titleFocusedRef = useRef(false);
@@ -118,6 +129,10 @@ export function App() {
   useEffect(() => {
     if (slug) setRoomCode(slug.toUpperCase());
   }, [slug]);
+
+  useEffect(() => {
+    setJoinError(null);
+  }, [roomCode, name, role]);
 
   useEffect(() => {
     const base = getApiBase();
@@ -200,6 +215,15 @@ export function App() {
     return `${window.location.origin}/r/${code}`;
   }, [state?.room.code, roomCode]);
 
+  const roleOptionsForSelect = rolesEnabledForJoin === true ? ROLE_OPTIONS_REQUIRED : ROLE_OPTIONS_OPTIONAL;
+
+  const joinBlockedByRole = rolesEnabledForJoin === true && !role;
+  const canJoin =
+    !!roomCode.trim() &&
+    !!name.trim() &&
+    !joinBlockedByRole &&
+    !!socket;
+
   async function copyInvite(url: string) {
     try {
       await navigator.clipboard.writeText(url);
@@ -224,12 +248,22 @@ export function App() {
   }
 
   function joinRoom() {
-    if (!socket) return;
+    if (!socket || !canJoin) return;
+    setJoinError(null);
     socket.emit(
       "room:join",
       { roomCode: roomCode.trim().toUpperCase(), name: name.trim(), role: role || undefined },
-      (ack: { ok?: boolean; userId?: string }) => {
-        if (!ack?.ok || !ack.userId) return;
+      (ack: { ok?: boolean; userId?: string; error?: string }) => {
+        if (!ack?.ok || !ack.userId) {
+          if (ack?.error === "role_required") {
+            setJoinError("В этой комнате включено распределение по ролям — выберите свою роль.");
+          } else if (ack?.error === "room_not_found") {
+            setJoinError("Комната с таким кодом не найдена.");
+          } else {
+            setJoinError("Не удалось войти. Проверьте код комнаты и имя.");
+          }
+          return;
+        }
         const c = roomCode.trim().toUpperCase();
         saveSession(c, ack.userId);
         setUserId(ack.userId);
@@ -296,113 +330,222 @@ export function App() {
   }, []);
 
   return (
-    <div className="container">
-      <div className="row" style={{ marginBottom: 14 }}>
-        <Link to="/" className="title" style={{ textDecoration: "none" }}>
-          Poker Planning
-        </Link>
-        <div className="spacer" />
-        {state?.room?.code ? <span className="pill">Комната: {state.room.code}</span> : null}
-        {isHost ? <span className="pill">Ведущий</span> : null}
-        {userId ? (
-          <button type="button" className="secondary" onClick={leaveRoom}>
-            Выйти
-          </button>
-        ) : null}
-      </div>
-
-      {!userId ? (
-        <div className="card">
-          {slug ? (
-            <div className="inviteBanner" style={{ marginBottom: 14 }}>
-              <div className="inviteBannerTitle">Приглашение в комнату</div>
-              <div className="muted">
-                Код: <strong>{slug.toUpperCase()}</strong> — введите имя и нажмите «Войти».
-              </div>
-            </div>
-          ) : null}
-
-          <div className="row" style={{ alignItems: "end" }}>
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div className="muted" style={{ marginBottom: 6 }}>
-                Код комнаты
-              </div>
-              <input value={roomCode} onChange={(e) => setRoomCode(e.target.value)} placeholder="Напр. A1B2C3" />
-            </div>
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div className="muted" style={{ marginBottom: 6 }}>
-                Имя
-              </div>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ваше имя" />
-            </div>
-
-            <div style={{ minWidth: 220 }}>
-              <div className="muted" style={{ marginBottom: 6 }}>
-                Роль (опционально)
-              </div>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as Role | "")}
-                disabled={rolesEnabledForJoin === false}
-                title={rolesEnabledForJoin === false ? "В этой комнате роли отключены" : undefined}
-              >
-                {ROLE_OPTIONS.map((o) => (
-                  <option key={o.label} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <button onClick={joinRoom} disabled={!roomCode.trim() || !name.trim()}>
-              Войти
-            </button>
+    <div className="app-root">
+      <nav className="navbar is-white has-shadow is-spaced mb-4" role="navigation">
+        <div className="container">
+          <div className="navbar-brand">
+            <Link to="/" className="navbar-item has-text-weight-bold is-size-5">
+              Poker Planning
+            </Link>
           </div>
-
-          <div style={{ height: 12 }} />
-
-          <div className="row">
-            <button className="secondary" onClick={createRoom}>
-              Создать комнату
-            </button>
-            <label className="row muted" style={{ gap: 8 }}>
-              <input type="checkbox" checked={createRolesEnabled} onChange={(e) => setCreateRolesEnabled(e.target.checked)} />
-              Использовать роли
-            </label>
-          </div>
-
-          {roomCode.trim() && !slug ? (
-            <div className="shareRow muted" style={{ marginTop: 14 }}>
-              <span>Ссылка для гостей:</span>
-              <input readOnly className="shareInput" value={inviteUrl || `${typeof window !== "undefined" ? window.location.origin : ""}/r/${roomCode.trim().toUpperCase()}`} />
-              <button type="button" className="secondary" onClick={() => copyInvite(inviteUrl || `${window.location.origin}/r/${roomCode.trim().toUpperCase()}`)}>
-                Копировать
-              </button>
-              {copyHint ? <span className="pill">{copyHint}</span> : null}
+          <div className="navbar-menu is-active" style={{ boxShadow: "none" }}>
+            <div className="navbar-end is-align-items-center" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+              {state?.room?.code ? (
+                <span className="tag is-light is-medium">
+                  Комната: <span className="has-text-weight-bold ml-1">{state.room.code}</span>
+                </span>
+              ) : null}
+              {isHost ? (
+                <span className="tag is-primary is-light is-medium">
+                  Ведущий
+                </span>
+              ) : null}
+              {userId ? (
+                <div className="navbar-item py-0">
+                  <button type="button" className="button is-small is-light" onClick={leaveRoom}>
+                    Выйти
+                  </button>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-
-          <div className="muted" style={{ marginTop: 12 }}>
-            Отправьте коллегам ссылку вида <code className="codeInline">/r/КОД</code> — они смогут войти сразу по ней. Сессия сохраняется в этом браузере.
           </div>
         </div>
-      ) : (
-        <RoomView
-          state={state}
-          userId={userId}
-          titleDraft={titleDraft}
-          onTitleDraftChange={onTitleDraftChange}
-          onTitleFocus={onTitleFocus}
-          onTitleBlur={onTitleBlur}
-          onVote={setVote}
-          selectedVote={selectedVote}
-          onReveal={reveal}
-          onReset={resetRound}
-          inviteUrl={inviteUrl}
-          onCopyInvite={copyInvite}
-          copyHint={copyHint}
-        />
-      )}
+      </nav>
+
+      <div className="container px-4 pb-5">
+        {!userId ? (
+          <div className="box" style={{ maxWidth: "920px", margin: "0 auto" }}>
+            {slug ? (
+              <div className="notification is-info is-light py-3 px-4 mb-4">
+                <p className="has-text-weight-semibold mb-1">Приглашение в комнату</p>
+                <p className="is-size-7 mb-2">
+                  Код <span className="tag is-info is-light">{slug.toUpperCase()}</span> — чтобы войти, обязательно укажите{" "}
+                  <strong>имя</strong> (его видят все участники) и нажмите «Войти».
+                </p>
+                {rolesEnabledForJoin === true ? (
+                  <p className="is-size-7 mb-0">В этой комнате по ролям: выберите роль в списке — без неё вход недоступен.</p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="is-size-7 has-text-grey mb-4">
+                Чтобы создать комнату, нажмите кнопку ниже — откроется код. Затем введите <strong>ваше имя</strong> в поле
+                «Как вас зовут» и нажмите «Войти», чтобы зайти первым и стать ведущим.
+              </p>
+            )}
+
+            <div className="columns is-multiline is-variable is-2">
+              <div className="column is-12-mobile is-4-tablet">
+                <div className="field mb-0">
+                  <label className="label is-small" htmlFor="pp-room-code">
+                    Код комнаты
+                  </label>
+                  <div className="control">
+                    <input
+                      id="pp-room-code"
+                      className="input is-small"
+                      value={roomCode}
+                      onChange={(e) => setRoomCode(e.target.value)}
+                      placeholder="Напр. A1B2C3"
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="column is-12-mobile is-4-tablet">
+                <div className="field mb-0">
+                  <label className="label is-small" htmlFor="pp-name">
+                    Как вас зовут <span className="has-text-danger">*</span>
+                  </label>
+                  <div className="control">
+                    <input
+                      id="pp-name"
+                      className="input is-small"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Например: Алексей"
+                      autoComplete="name"
+                      autoFocus={!!slug}
+                    />
+                  </div>
+                  <p className="help is-info">Имя обязательно — без него кнопка «Войти» неактивна.</p>
+                </div>
+              </div>
+              <div className="column is-12-mobile is-4-tablet">
+                <div className="field mb-0">
+                  <label className="label is-small" htmlFor="pp-role">
+                    Роль
+                    {rolesEnabledForJoin === true ? (
+                      <span className="has-text-danger"> *</span>
+                    ) : (
+                      <span className="has-text-grey"> (если включено в комнате)</span>
+                    )}
+                  </label>
+                  <div className="control">
+                    <div className={"select is-fullwidth is-small" + (joinBlockedByRole ? " is-danger" : "")}>
+                      <select
+                        id="pp-role"
+                        value={role}
+                        onChange={(e) => setRole(e.target.value as Role | "")}
+                        disabled={rolesEnabledForJoin === false}
+                        title={rolesEnabledForJoin === false ? "В этой комнате роли отключены" : undefined}
+                      >
+                        {roleOptionsForSelect.map((o) => (
+                          <option key={o.label} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {rolesEnabledForJoin === true ? (
+                    <p className="help is-warning mb-0">Выберите роль — в этой комнате включено распределение по ролям.</p>
+                  ) : rolesEnabledForJoin === false ? (
+                    <p className="help is-size-7">Для этой комнаты роли выключены.</p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {joinError ? (
+              <div className="notification is-danger is-light py-2 px-3 my-3">
+                <p className="is-size-7 mb-0">{joinError}</p>
+              </div>
+            ) : null}
+
+            <div className="field is-grouped is-grouped-multiline mt-3">
+              <div className="control">
+                <button type="button" className="button is-primary is-small" onClick={joinRoom} disabled={!canJoin}>
+                  Войти
+                </button>
+              </div>
+            </div>
+
+            <hr className="my-4" />
+
+            <div className="columns is-vcentered is-multiline is-variable is-2">
+              <div className="column is-narrow">
+                <button type="button" className="button is-small is-light" onClick={createRoom}>
+                  Создать комнату
+                </button>
+              </div>
+              <div className="column">
+                <label className="checkbox is-size-7">
+                  <input
+                    type="checkbox"
+                    className="mr-2"
+                    checked={createRolesEnabled}
+                    onChange={(e) => setCreateRolesEnabled(e.target.checked)}
+                  />
+                  Распределение участников по ролям (BA, BE, FE…)
+                </label>
+                <p className="help mt-1 mb-0">
+                  После создания скопируйте ссылку коллегам. Сами введите имя выше и нажмите «Войти», чтобы подключиться к новой
+                  комнате.
+                </p>
+              </div>
+            </div>
+
+            {roomCode.trim() && !slug ? (
+              <div className="field has-addons mt-4" style={{ flexWrap: "wrap" }}>
+                <div className="control is-expanded" style={{ minWidth: "200px" }}>
+                  <input
+                    readOnly
+                    className="input is-small"
+                    value={inviteUrl || `${typeof window !== "undefined" ? window.location.origin : ""}/r/${roomCode.trim().toUpperCase()}`}
+                  />
+                </div>
+                <div className="control">
+                  <button
+                    type="button"
+                    className="button is-small is-link is-light"
+                    onClick={() =>
+                      copyInvite(inviteUrl || `${window.location.origin}/r/${roomCode.trim().toUpperCase()}`)
+                    }
+                  >
+                    Копировать ссылку
+                  </button>
+                </div>
+                {copyHint ? (
+                  <div className="control">
+                    <span className="tag is-success is-light">{copyHint}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <p className="is-size-7 has-text-grey mt-3 mb-0">
+              Ссылка для гостей: <span className="is-monospace-inline has-background-white-ter px-1">/r/КОД</span> — сессия
+              сохраняется в этом браузере.
+            </p>
+          </div>
+        ) : (
+          <RoomView
+            state={state}
+            userId={userId}
+            titleDraft={titleDraft}
+            onTitleDraftChange={onTitleDraftChange}
+            onTitleFocus={onTitleFocus}
+            onTitleBlur={onTitleBlur}
+            onVote={setVote}
+            selectedVote={selectedVote}
+            onReveal={reveal}
+            onReset={resetRound}
+            inviteUrl={inviteUrl}
+            onCopyInvite={copyInvite}
+            copyHint={copyHint}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -423,7 +566,13 @@ function RoomView(props: {
   copyHint: string | null;
 }) {
   const { state, userId } = props;
-  if (!state) return <div className="card">Подключаемся…</div>;
+  if (!state) {
+    return (
+      <div className="box has-text-centered">
+        <p className="has-text-grey">Подключаемся…</p>
+      </div>
+    );
+  }
 
   const me = state.users.find((u) => u.id === userId);
   const history = state.history ?? [];
@@ -439,146 +588,185 @@ function RoomView(props: {
       : [];
 
   return (
-    <div className="layoutMain">
-      <div className="card" style={{ flex: 1, minWidth: 300 }}>
-        <div className="shareRow" style={{ marginBottom: 14 }}>
-          <span className="muted">Ссылка на комнату</span>
-          <input readOnly className="shareInput" value={props.inviteUrl} />
-          <button type="button" className="secondary" onClick={() => props.onCopyInvite(props.inviteUrl)} disabled={!props.inviteUrl}>
-            Копировать
-          </button>
-          {props.copyHint ? <span className="pill">{props.copyHint}</span> : null}
-        </div>
-
-        <div className="row" style={{ marginBottom: 10 }}>
-          <div>
-            <div className="muted">Вы</div>
-            <div style={{ fontWeight: 700 }}>
-              {me?.name} {me?.role ? <span className="pill">{me.role}</span> : null}
+    <div className="columns is-multiline is-variable is-4">
+      <div className="column is-12-tablet is-8-desktop">
+        <div className="box">
+          <div className="field has-addons mb-4" style={{ flexWrap: "wrap" }}>
+            <div className="control is-expanded" style={{ minWidth: "180px" }}>
+              <input readOnly className="input is-small" value={props.inviteUrl} />
             </div>
-          </div>
-          <div className="spacer" />
-          <span className="pill">{state.room.rolesEnabled ? "Роли: включены" : "Роли: выкл"}</span>
-          <span className="pill">{state.room.revealed ? "Карты открыты" : "Карты скрыты"}</span>
-        </div>
-
-        <div style={{ marginBottom: 12 }}>
-          <div className="muted" style={{ marginBottom: 6 }}>
-            Текущая задача / тикет
-          </div>
-          <input
-            style={{ width: "100%", boxSizing: "border-box" }}
-            value={props.titleDraft}
-            onChange={(e) => props.onTitleDraftChange(e.target.value)}
-            onFocus={props.onTitleFocus}
-            onBlur={props.onTitleBlur}
-            placeholder="Например: PROJ-123 — Авторизация (сохраняется при вводе)"
-          />
-          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-            Любой участник может менять название; изменения видны всем сразу.
-          </div>
-        </div>
-        {!props.titleDraft.trim() ? (
-          <div className="hintWarn">Рекомендуем указать название задачи — так запись в истории будет понятной.</div>
-        ) : null}
-
-        {state.room.revealed ? (
-          <div className="resultHero">
-            <div className="resultHeroTitle">Итог оценки</div>
-            {primarySummary.length ? (
-              <div className="resultHeroGrid">
-                {primarySummary.map((g) => (
-                  <div key={g.label} className="resultHeroCard">
-                    <div className="resultHeroLabel">{g.label}</div>
-                    <div className="resultHeroNums">
-                      <div>
-                        <span className="resultStatName">Среднее</span>
-                        <span className="resultStatVal">{fmtNum(g.mean)}</span>
-                      </div>
-                      <div>
-                        <span className="resultStatName">Медиана</span>
-                        <span className="resultStatVal">{fmtNum(g.median)}</span>
-                      </div>
-                    </div>
-                    <div className="resultHeroMeta">Числовых оценок в группе: {g.count}</div>
-                  </div>
-                ))}
+            <div className="control">
+              <button
+                type="button"
+                className="button is-small is-link is-light"
+                onClick={() => props.onCopyInvite(props.inviteUrl)}
+                disabled={!props.inviteUrl}
+              >
+                Копировать
+              </button>
+            </div>
+            {props.copyHint ? (
+              <div className="control">
+                <span className="tag is-success is-light is-small">{props.copyHint}</span>
               </div>
-            ) : (
-              <div className="muted">Нет числовых карт для расчёта (например, все «?» или «☕»).</div>
-            )}
+            ) : null}
           </div>
-        ) : (
-          <div className="resultPending">
-            <strong>Оценка в процессе.</strong> Когда все поставят карты, любой участник может нажать «Открыть карты» — здесь появится итог.
-          </div>
-        )}
 
-        <div className="muted" style={{ marginBottom: 10, marginTop: 16 }}>
-          Выберите оценку
-        </div>
-        <div className="gridCards">
-          {state.room.deck.map((v) => (
-            <div
-              key={v}
-              className={"voteCard" + (props.selectedVote === v ? " selected" : "")}
-              onClick={() => (state.room.revealed ? null : props.onVote(v))}
-              role="button"
-              aria-disabled={state.room.revealed}
-            >
-              <div style={{ fontSize: 18, fontWeight: 800 }}>{v}</div>
+          <div className="level is-mobile mb-3">
+            <div className="level-left">
+              <div>
+                <p className="is-size-7 has-text-grey mb-0">Вы</p>
+                <p className="has-text-weight-semibold mb-0">
+                  {me?.name}{" "}
+                  {me?.role ? (
+                    <span className="tag is-info is-light is-small ml-1">{me.role}</span>
+                  ) : null}
+                </p>
+              </div>
             </div>
-          ))}
-        </div>
+            <div className="level-right">
+              <div className="tags mb-0">
+                <span className={`tag is-small ${state.room.rolesEnabled ? "is-warning is-light" : "is-light"}`}>
+                  Роли: {state.room.rolesEnabled ? "вкл" : "выкл"}
+                </span>
+                <span className={`tag is-small ${state.room.revealed ? "is-success is-light" : "is-light"}`}>
+                  {state.room.revealed ? "Открыто" : "Скрыто"}
+                </span>
+              </div>
+            </div>
+          </div>
 
-        <div style={{ height: 12 }} />
+          <div className="field mb-4">
+            <label className="label is-small">Текущая задача / тикет</label>
+            <div className="control">
+              <input
+                className="input is-small"
+                value={props.titleDraft}
+                onChange={(e) => props.onTitleDraftChange(e.target.value)}
+                onFocus={props.onTitleFocus}
+                onBlur={props.onTitleBlur}
+                placeholder="Например: PROJ-123 — Авторизация"
+              />
+            </div>
+            <p className="help">Изменения видны всем участникам.</p>
+          </div>
 
-        <div className="row">
-          <button onClick={props.onReveal} disabled={state.room.revealed}>
-            Открыть карты
-          </button>
-          <button className="secondary" onClick={props.onReset}>
-            Новый раунд
-          </button>
+          {!props.titleDraft.trim() ? (
+            <div className="notification is-warning is-light py-2 px-3 mb-4">
+              <p className="is-size-7 mb-0">Лучше указать название задачи — так запись в истории будет понятнее.</p>
+            </div>
+          ) : null}
+
+          {state.room.revealed ? (
+            <div className="message is-success is-light mb-4">
+              <div className="message-body py-3">
+                <p className="has-text-weight-semibold is-size-7 mb-2">Итог оценки</p>
+                {primarySummary.length ? (
+                  <div className="columns is-multiline is-variable is-2">
+                    {primarySummary.map((g) => (
+                      <div key={g.label} className="column is-6-tablet">
+                        <div className="box py-3 px-3 mb-0" style={{ background: "rgba(255,255,255,0.85)" }}>
+                          <p className="has-text-weight-bold is-size-6 mb-2">{g.label}</p>
+                          <div className="columns is-mobile is-1 mb-0">
+                            <div className="column pb-0">
+                              <p className="is-size-7 has-text-grey mb-0">Среднее</p>
+                              <p className="title is-5 mb-0" style={{ fontVariantNumeric: "tabular-nums" }}>
+                                {fmtNum(g.mean)}
+                              </p>
+                            </div>
+                            <div className="column pb-0">
+                              <p className="is-size-7 has-text-grey mb-0">Медиана</p>
+                              <p className="title is-5 mb-0" style={{ fontVariantNumeric: "tabular-nums" }}>
+                                {fmtNum(g.median)}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="is-size-7 has-text-grey mb-0">Числовых оценок: {g.count}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="is-size-7 mb-0">Нет числовых карт для расчёта (например, все «?» или «☕»).</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="notification is-light py-3 mb-4">
+              <p className="is-size-7 mb-0">
+                <strong>Оценка в процессе.</strong> Когда все поставят карты, нажмите «Открыть карты» — здесь появится итог.
+              </p>
+            </div>
+          )}
+
+          <p className="is-size-7 has-text-grey mb-2">Выберите оценку</p>
+          <div className="vote-grid mb-4">
+            {state.room.deck.map((v) => (
+              <button
+                key={v}
+                type="button"
+                className={
+                  "button is-small is-light" + (props.selectedVote === v ? " is-selected" : "")
+                }
+                disabled={state.room.revealed}
+                onClick={() => (state.room.revealed ? undefined : props.onVote(v))}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+
+          <div className="buttons">
+            <button type="button" className="button is-primary is-small" onClick={props.onReveal} disabled={state.room.revealed}>
+              Открыть карты
+            </button>
+            <button type="button" className="button is-small" onClick={props.onReset}>
+              Новый раунд
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="sideColumn">
-        <div className="card sideCard">
-          <div className="muted" style={{ marginBottom: 8 }}>
-            Участники
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
+      <div className="column is-12-tablet is-4-desktop">
+        <div className="box mb-3">
+          <p className="is-size-7 has-text-weight-semibold mb-2">Участники</p>
+          <ul className="mb-0" style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {state.users.map((u) => {
               const voted = !!state.voteStatus[u.id];
               const shown = state.votesRevealed[u.id];
               return (
-                <div key={u.id} className="row" style={{ justifyContent: "space-between" }}>
-                  <div className="row">
-                    <div style={{ fontWeight: 700 }}>{u.name}</div>
-                    {u.role ? <span className="pill">{u.role}</span> : null}
-                    {u.id === state.room.hostId ? <span className="pill">Ведущий</span> : null}
-                  </div>
-                  <span className="pill">{state.room.revealed ? (shown ?? "—") : voted ? "✓" : "…"}</span>
-                </div>
+                <li
+                  key={u.id}
+                  className="is-flex is-justify-content-space-between is-align-items-center py-2"
+                  style={{ borderBottom: "1px solid #f0f0f0", gap: "0.5rem" }}
+                >
+                  <span>
+                    <span className="has-text-weight-medium">{u.name}</span>
+                    {u.role ? (
+                      <span className="tag is-info is-light is-small ml-1">{u.role}</span>
+                    ) : null}
+                    {u.id === state.room.hostId ? (
+                      <span className="tag is-primary is-light is-small ml-1">Ведущий</span>
+                    ) : null}
+                  </span>
+                  <span className="tag is-light">{state.room.revealed ? (shown ?? "—") : voted ? "✓" : "…"}</span>
+                </li>
               );
             })}
-          </div>
+          </ul>
         </div>
 
-        <div className="card sideCard">
-          <div className="muted" style={{ marginBottom: 8 }}>
-            История оценок
-          </div>
+        <div className="box">
+          <p className="is-size-7 has-text-weight-semibold mb-2">История оценок</p>
           {history.length === 0 ? (
-            <div className="muted">Пока нет завершённых раундов. После «Открыть карты» запись появится здесь.</div>
+            <p className="is-size-7 has-text-grey">Пока нет завершённых раундов.</p>
           ) : (
-            <div className="historyList">
+            <div className="history-scroll">
               {history.map((h) => (
-                <div key={`${h.roundId}-${h.revealedAt}`} className="historyItem">
-                  <div className="historyItemTitle">{h.title.trim() || "Без названия задачи"}</div>
-                  <div className="historyItemMeta">{formatRuDateTime(h.revealedAt)}</div>
-                  <div className="historyItemSummary">{summarizeGroupsRu(h.aggregates.groups)}</div>
+                <div key={`${h.roundId}-${h.revealedAt}`} className="box py-2 px-3 mb-2" style={{ background: "#fafafa" }}>
+                  <p className="has-text-weight-semibold is-size-7 mb-1">{h.title.trim() || "Без названия задачи"}</p>
+                  <p className="is-size-7 has-text-grey mb-1">{formatRuDateTime(h.revealedAt)}</p>
+                  <p className="is-size-7 mb-0">{summarizeGroupsRu(h.aggregates.groups)}</p>
                 </div>
               ))}
             </div>

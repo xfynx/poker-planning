@@ -62,6 +62,10 @@ io.on("connection", (socket: Socket) => {
     const room = await store.getRoom(parsed.data.roomCode);
     if (!room) return ack?.({ ok: false, error: "room_not_found" });
 
+    if (room.rolesEnabled && !parsed.data.role) {
+      return ack?.({ ok: false, error: "role_required" });
+    }
+
     const userId = genUserId();
     const role: Role | undefined = room.rolesEnabled ? parsed.data.role : undefined;
     const user: User = { id: userId, name: parsed.data.name, role };
