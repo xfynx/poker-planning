@@ -8,7 +8,7 @@ Planning Poker приложение (React + TypeScript backend + Redis), зав
 docker compose --profile dev up --build
 ```
 
-- Frontend: `http://localhost:5173`
+- Frontend: `http://localhost/` (порт **80**)
 - Backend: `http://localhost:3000/health`
 
 ### Smoke test (dev)
@@ -28,6 +28,6 @@ docker compose --profile dev up --build
 docker compose --profile prod up --build
 ```
 
-- Frontend: `http://localhost:8080`
+- Frontend: `http://localhost/` (порт **80**; nginx отдаёт UI и проксирует API/WebSocket)
 - Backend: `http://localhost:3000/health`
 

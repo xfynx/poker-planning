@@ -331,204 +331,190 @@ export function App() {
 
   return (
     <div className="app-root">
-      <nav className="navbar is-white has-shadow is-spaced mb-4" role="navigation">
-        <div className="container">
-          <div className="navbar-brand">
-            <Link to="/" className="navbar-item has-text-weight-bold is-size-5">
+      <header className="pp-header" role="banner">
+        <div className="container px-4">
+          <div className="pp-header-inner">
+            <Link to="/" className="pp-logo">
               Poker Planning
             </Link>
-          </div>
-          <div className="navbar-menu is-active" style={{ boxShadow: "none" }}>
-            <div className="navbar-end is-align-items-center" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+            <div className="pp-header-actions">
               {state?.room?.code ? (
-                <span className="tag is-light is-medium">
-                  Комната: <span className="has-text-weight-bold ml-1">{state.room.code}</span>
+                <span className="pp-chip">
+                  Комната <strong>{state.room.code}</strong>
                 </span>
               ) : null}
-              {isHost ? (
-                <span className="tag is-primary is-light is-medium">
-                  Ведущий
-                </span>
-              ) : null}
+              {isHost ? <span className="pp-chip is-host">Ведущий</span> : null}
               {userId ? (
-                <div className="navbar-item py-0">
-                  <button type="button" className="button is-small is-light" onClick={leaveRoom}>
-                    Выйти
-                  </button>
-                </div>
+                <button type="button" className="button is-small pp-btn-ghost" onClick={leaveRoom}>
+                  Выйти
+                </button>
               ) : null}
             </div>
           </div>
         </div>
-      </nav>
+      </header>
 
-      <div className="container px-4 pb-5">
-        {!userId ? (
-          <div className="box" style={{ maxWidth: "920px", margin: "0 auto" }}>
-            {slug ? (
-              <div className="notification is-info is-light py-3 px-4 mb-4">
-                <p className="has-text-weight-semibold mb-1">Приглашение в комнату</p>
-                <p className="is-size-7 mb-2">
-                  Код <span className="tag is-info is-light">{slug.toUpperCase()}</span> — чтобы войти, обязательно укажите{" "}
-                  <strong>имя</strong> (его видят все участники) и нажмите «Войти».
-                </p>
-                {rolesEnabledForJoin === true ? (
-                  <p className="is-size-7 mb-0">В этой комнате по ролям: выберите роль в списке — без неё вход недоступен.</p>
-                ) : null}
-              </div>
-            ) : (
-              <p className="is-size-7 has-text-grey mb-4">
-                Чтобы создать комнату, нажмите кнопку ниже — откроется код. Затем введите <strong>ваше имя</strong> в поле
-                «Как вас зовут» и нажмите «Войти», чтобы зайти первым и стать ведущим.
-              </p>
-            )}
-
-            <div className="columns is-multiline is-variable is-2">
-              <div className="column is-12-mobile is-4-tablet">
-                <div className="field mb-0">
-                  <label className="label is-small" htmlFor="pp-room-code">
-                    Код комнаты
-                  </label>
-                  <div className="control">
-                    <input
-                      id="pp-room-code"
-                      className="input is-small"
-                      value={roomCode}
-                      onChange={(e) => setRoomCode(e.target.value)}
-                      placeholder="Напр. A1B2C3"
-                      autoComplete="off"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="column is-12-mobile is-4-tablet">
-                <div className="field mb-0">
-                  <label className="label is-small" htmlFor="pp-name">
-                    Как вас зовут <span className="has-text-danger">*</span>
-                  </label>
-                  <div className="control">
-                    <input
-                      id="pp-name"
-                      className="input is-small"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Например: Алексей"
-                      autoComplete="name"
-                      autoFocus={!!slug}
-                    />
-                  </div>
-                  <p className="help is-info">Имя обязательно — без него кнопка «Войти» неактивна.</p>
-                </div>
-              </div>
-              <div className="column is-12-mobile is-4-tablet">
-                <div className="field mb-0">
-                  <label className="label is-small" htmlFor="pp-role">
-                    Роль
-                    {rolesEnabledForJoin === true ? (
-                      <span className="has-text-danger"> *</span>
-                    ) : (
-                      <span className="has-text-grey"> (если включено в комнате)</span>
-                    )}
-                  </label>
-                  <div className="control">
-                    <div className={"select is-fullwidth is-small" + (joinBlockedByRole ? " is-danger" : "")}>
-                      <select
-                        id="pp-role"
-                        value={role}
-                        onChange={(e) => setRole(e.target.value as Role | "")}
-                        disabled={rolesEnabledForJoin === false}
-                        title={rolesEnabledForJoin === false ? "В этой комнате роли отключены" : undefined}
-                      >
-                        {roleOptionsForSelect.map((o) => (
-                          <option key={o.label} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+      <main className="pp-main">
+        <div className="container px-4">
+          {!userId ? (
+            <div className="pp-card is-narrow mt-5">
+              <h1 className="title is-4 mb-3" style={{ letterSpacing: "-0.02em" }}>
+                Оценка усилий с командой
+              </h1>
+              {slug ? (
+                <div className="pp-callout">
+                  <p className="pp-callout-title">Вы по ссылке-приглашению</p>
+                  <p>
+                    Код <span className="pp-chip is-accent">{slug.toUpperCase()}</span> — укажите <strong>имя</strong> и
+                    нажмите «Войти в комнату».
+                  </p>
                   {rolesEnabledForJoin === true ? (
-                    <p className="help is-warning mb-0">Выберите роль — в этой комнате включено распределение по ролям.</p>
-                  ) : rolesEnabledForJoin === false ? (
-                    <p className="help is-size-7">Для этой комнаты роли выключены.</p>
+                    <p>Здесь включены роли: выберите свою в списке (без роли войти нельзя).</p>
                   ) : null}
                 </div>
-              </div>
-            </div>
+              ) : (
+                <p className="pp-lead">
+                  Введите код или создайте новую комнату. После появления кода укажите имя и войдите — первый участник станет
+                  ведущим.
+                </p>
+              )}
 
-            {joinError ? (
-              <div className="notification is-danger is-light py-2 px-3 my-3">
-                <p className="is-size-7 mb-0">{joinError}</p>
+              <div className="columns is-multiline is-variable is-3">
+                <div className="column is-12-mobile is-4-tablet">
+                  <div className="field mb-0">
+                    <label className="label" htmlFor="pp-room-code">
+                      Код комнаты
+                    </label>
+                    <div className="control">
+                      <input
+                        id="pp-room-code"
+                        className="input"
+                        value={roomCode}
+                        onChange={(e) => setRoomCode(e.target.value)}
+                        placeholder="Например A1B2C3"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="column is-12-mobile is-4-tablet">
+                  <div className="field mb-0">
+                    <label className="label" htmlFor="pp-name">
+                      Ваше имя <span className="has-text-danger">*</span>
+                    </label>
+                    <div className="control">
+                      <input
+                        id="pp-name"
+                        className="input"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Как вас видят в столе"
+                        autoComplete="name"
+                        autoFocus={!!slug}
+                      />
+                    </div>
+                    <p className="help">Имя нужно, чтобы активировать кнопку входа.</p>
+                  </div>
+                </div>
+                <div className="column is-12-mobile is-4-tablet">
+                  <div className="field mb-0">
+                    <label className="label" htmlFor="pp-role">
+                      Роль
+                      {rolesEnabledForJoin === true ? (
+                        <span className="has-text-danger"> *</span>
+                      ) : (
+                        <span className="has-text-grey"> (по настройкам комнаты)</span>
+                      )}
+                    </label>
+                    <div className="control">
+                      <div className={"select is-fullwidth" + (joinBlockedByRole ? " is-danger" : "")}>
+                        <select
+                          id="pp-role"
+                          value={role}
+                          onChange={(e) => setRole(e.target.value as Role | "")}
+                          disabled={rolesEnabledForJoin === false}
+                          title={rolesEnabledForJoin === false ? "В этой комнате роли отключены" : undefined}
+                        >
+                          {roleOptionsForSelect.map((o) => (
+                            <option key={o.label} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    {rolesEnabledForJoin === true ? (
+                      <p className="help">Нужна для комнат с распределением по ролям.</p>
+                    ) : rolesEnabledForJoin === false ? (
+                      <p className="help">В этой комнате роли выключены.</p>
+                    ) : null}
+                  </div>
+                </div>
               </div>
-            ) : null}
 
-            <div className="field is-grouped is-grouped-multiline mt-3">
-              <div className="control">
-                <button type="button" className="button is-primary is-small" onClick={joinRoom} disabled={!canJoin}>
-                  Войти
+              {joinError ? (
+                <div className="notification is-danger is-light mt-4 mb-0">
+                  <p className="mb-0">{joinError}</p>
+                </div>
+              ) : null}
+
+              <div className="mt-4">
+                <button type="button" className="button is-primary is-medium" onClick={joinRoom} disabled={!canJoin}>
+                  Войти в комнату
                 </button>
               </div>
-            </div>
 
-            <hr className="my-4" />
+              <hr className="pp-divider" />
 
-            <div className="columns is-vcentered is-multiline is-variable is-2">
-              <div className="column is-narrow">
-                <button type="button" className="button is-small is-light" onClick={createRoom}>
+              <h2 className="title is-6 mb-3 has-text-grey">Новая комната</h2>
+              <div className="is-flex is-flex-wrap is-align-items-center" style={{ gap: "1rem" }}>
+                <button type="button" className="button is-light" onClick={createRoom}>
                   Создать комнату
                 </button>
-              </div>
-              <div className="column">
-                <label className="checkbox is-size-7">
+                <label className="checkbox">
                   <input
                     type="checkbox"
                     className="mr-2"
                     checked={createRolesEnabled}
                     onChange={(e) => setCreateRolesEnabled(e.target.checked)}
                   />
-                  Распределение участников по ролям (BA, BE, FE…)
+                  Учитывать роли (BA, BE, FE…)
                 </label>
-                <p className="help mt-1 mb-0">
-                  После создания скопируйте ссылку коллегам. Сами введите имя выше и нажмите «Войти», чтобы подключиться к новой
-                  комнате.
-                </p>
               </div>
-            </div>
+              <p className="pp-muted mt-3 mb-0">
+                Отправьте коллегам ссылку <span className="is-monospace-inline">/r/КОД</span>. Сессия хранится в браузере.
+              </p>
 
-            {roomCode.trim() && !slug ? (
-              <div className="field has-addons mt-4" style={{ flexWrap: "wrap" }}>
-                <div className="control is-expanded" style={{ minWidth: "200px" }}>
-                  <input
-                    readOnly
-                    className="input is-small"
-                    value={inviteUrl || `${typeof window !== "undefined" ? window.location.origin : ""}/r/${roomCode.trim().toUpperCase()}`}
-                  />
-                </div>
-                <div className="control">
-                  <button
-                    type="button"
-                    className="button is-small is-link is-light"
-                    onClick={() =>
-                      copyInvite(inviteUrl || `${window.location.origin}/r/${roomCode.trim().toUpperCase()}`)
-                    }
-                  >
-                    Копировать ссылку
-                  </button>
-                </div>
-                {copyHint ? (
-                  <div className="control">
-                    <span className="tag is-success is-light">{copyHint}</span>
+              {roomCode.trim() && !slug ? (
+                <div className="field has-addons mt-4" style={{ flexWrap: "wrap" }}>
+                  <div className="control is-expanded" style={{ minWidth: "220px" }}>
+                    <input
+                      readOnly
+                      className="input"
+                      value={
+                        inviteUrl ||
+                        `${typeof window !== "undefined" ? window.location.origin : ""}/r/${roomCode.trim().toUpperCase()}`
+                      }
+                    />
                   </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            <p className="is-size-7 has-text-grey mt-3 mb-0">
-              Ссылка для гостей: <span className="is-monospace-inline has-background-white-ter px-1">/r/КОД</span> — сессия
-              сохраняется в этом браузере.
-            </p>
-          </div>
-        ) : (
+                  <div className="control">
+                    <button
+                      type="button"
+                      className="button is-primary is-light"
+                      onClick={() => copyInvite(inviteUrl || `${window.location.origin}/r/${roomCode.trim().toUpperCase()}`)}
+                    >
+                      Копировать ссылку
+                    </button>
+                  </div>
+                  {copyHint ? (
+                    <div className="control">
+                      <span className="pp-chip is-accent">{copyHint}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : (
           <RoomView
             state={state}
             userId={userId}
@@ -545,7 +531,8 @@ export function App() {
             copyHint={copyHint}
           />
         )}
-      </div>
+        </div>
+      </main>
     </div>
   );
 }
@@ -568,8 +555,8 @@ function RoomView(props: {
   const { state, userId } = props;
   if (!state) {
     return (
-      <div className="box has-text-centered">
-        <p className="has-text-grey">Подключаемся…</p>
+      <div className="pp-card pp-loading-card mt-5">
+        <p className="has-text-grey mb-0">Подключаемся к комнате…</p>
       </div>
     );
   }
@@ -588,59 +575,59 @@ function RoomView(props: {
       : [];
 
   return (
-    <div className="columns is-multiline is-variable is-4">
-      <div className="column is-12-tablet is-8-desktop">
-        <div className="box">
-          <div className="field has-addons mb-4" style={{ flexWrap: "wrap" }}>
-            <div className="control is-expanded" style={{ minWidth: "180px" }}>
-              <input readOnly className="input is-small" value={props.inviteUrl} />
+    <div className="columns is-multiline is-variable is-5 mt-4">
+      <div className="column is-12-tablet is-7-desktop">
+        <div className="pp-card">
+          <div className="pp-room-hero">
+            <div className="level is-mobile mb-0 pp-room-hero-level">
+              <div className="level-left">
+                <div>
+                  <p className="heading mb-2 has-text-grey">Вы в столе</p>
+                  <p className="title is-5 mb-0" style={{ letterSpacing: "-0.02em" }}>
+                    {me?.name}
+                    {me?.role ? (
+                      <span className="pp-chip is-accent ml-2" style={{ verticalAlign: "middle" }}>
+                        {me.role}
+                      </span>
+                    ) : null}
+                  </p>
+                </div>
+              </div>
+              <div className="level-right">
+                <div className="is-flex is-flex-wrap" style={{ gap: "0.5rem", justifyContent: "flex-end" }}>
+                  <span className="pp-chip">{state.room.rolesEnabled ? "Роли вкл" : "Роли выкл"}</span>
+                  <span className="pp-chip is-accent">{state.room.revealed ? "Карты открыты" : "Карты скрыты"}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="field has-addons mb-5" style={{ flexWrap: "wrap" }}>
+            <div className="control is-expanded" style={{ minWidth: "200px" }}>
+              <input readOnly className="input" value={props.inviteUrl} />
             </div>
             <div className="control">
               <button
                 type="button"
-                className="button is-small is-link is-light"
+                className="button is-primary is-light"
                 onClick={() => props.onCopyInvite(props.inviteUrl)}
                 disabled={!props.inviteUrl}
               >
-                Копировать
+                Скопировать ссылку
               </button>
             </div>
             {props.copyHint ? (
               <div className="control">
-                <span className="tag is-success is-light is-small">{props.copyHint}</span>
+                <span className="pp-chip is-accent">{props.copyHint}</span>
               </div>
             ) : null}
           </div>
 
-          <div className="level is-mobile mb-3">
-            <div className="level-left">
-              <div>
-                <p className="is-size-7 has-text-grey mb-0">Вы</p>
-                <p className="has-text-weight-semibold mb-0">
-                  {me?.name}{" "}
-                  {me?.role ? (
-                    <span className="tag is-info is-light is-small ml-1">{me.role}</span>
-                  ) : null}
-                </p>
-              </div>
-            </div>
-            <div className="level-right">
-              <div className="tags mb-0">
-                <span className={`tag is-small ${state.room.rolesEnabled ? "is-warning is-light" : "is-light"}`}>
-                  Роли: {state.room.rolesEnabled ? "вкл" : "выкл"}
-                </span>
-                <span className={`tag is-small ${state.room.revealed ? "is-success is-light" : "is-light"}`}>
-                  {state.room.revealed ? "Открыто" : "Скрыто"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="field mb-4">
-            <label className="label is-small">Текущая задача / тикет</label>
+          <div className="field mb-5">
+            <label className="label">Задача или тикет</label>
             <div className="control">
               <input
-                className="input is-small"
+                className="input"
                 value={props.titleDraft}
                 onChange={(e) => props.onTitleDraftChange(e.target.value)}
                 onFocus={props.onTitleFocus}
@@ -648,66 +635,62 @@ function RoomView(props: {
                 placeholder="Например: PROJ-123 — Авторизация"
               />
             </div>
-            <p className="help">Изменения видны всем участникам.</p>
+            <p className="help">Поле общее для всех — правки видны сразу.</p>
           </div>
 
           {!props.titleDraft.trim() ? (
-            <div className="notification is-warning is-light py-2 px-3 mb-4">
-              <p className="is-size-7 mb-0">Лучше указать название задачи — так запись в истории будет понятнее.</p>
+            <div className="notification is-warning is-light mb-5">
+              <p className="mb-0">Добавьте название задачи — так история раундов будет понятнее.</p>
             </div>
           ) : null}
 
           {state.room.revealed ? (
-            <div className="message is-success is-light mb-4">
-              <div className="message-body py-3">
-                <p className="has-text-weight-semibold is-size-7 mb-2">Итог оценки</p>
-                {primarySummary.length ? (
-                  <div className="columns is-multiline is-variable is-2">
-                    {primarySummary.map((g) => (
-                      <div key={g.label} className="column is-6-tablet">
-                        <div className="box py-3 px-3 mb-0" style={{ background: "rgba(255,255,255,0.85)" }}>
-                          <p className="has-text-weight-bold is-size-6 mb-2">{g.label}</p>
-                          <div className="columns is-mobile is-1 mb-0">
-                            <div className="column pb-0">
-                              <p className="is-size-7 has-text-grey mb-0">Среднее</p>
-                              <p className="title is-5 mb-0" style={{ fontVariantNumeric: "tabular-nums" }}>
-                                {fmtNum(g.mean)}
-                              </p>
-                            </div>
-                            <div className="column pb-0">
-                              <p className="is-size-7 has-text-grey mb-0">Медиана</p>
-                              <p className="title is-5 mb-0" style={{ fontVariantNumeric: "tabular-nums" }}>
-                                {fmtNum(g.median)}
-                              </p>
-                            </div>
+            <div className="mb-5">
+              <p className="title is-6 mb-3">Итог раунда</p>
+              {primarySummary.length ? (
+                <div className="columns is-multiline is-variable is-3">
+                  {primarySummary.map((g) => (
+                    <div key={g.label} className="column is-12-mobile is-6-tablet">
+                      <div className="pp-stat-card mb-0">
+                        <p className="has-text-weight-bold mb-3">{g.label}</p>
+                        <div className="columns is-mobile is-2 mb-0">
+                          <div className="column pb-0">
+                            <p className="is-size-7 has-text-grey mb-1">Среднее</p>
+                            <p className="title is-4 mb-0" style={{ fontVariantNumeric: "tabular-nums" }}>
+                              {fmtNum(g.mean)}
+                            </p>
                           </div>
-                          <p className="is-size-7 has-text-grey mb-0">Числовых оценок: {g.count}</p>
+                          <div className="column pb-0">
+                            <p className="is-size-7 has-text-grey mb-1">Медиана</p>
+                            <p className="title is-4 mb-0" style={{ fontVariantNumeric: "tabular-nums" }}>
+                              {fmtNum(g.median)}
+                            </p>
+                          </div>
                         </div>
+                        <p className="is-size-7 has-text-grey mt-2 mb-0">Числовых оценок: {g.count}</p>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="is-size-7 mb-0">Нет числовых карт для расчёта (например, все «?» или «☕»).</p>
-                )}
-              </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="pp-muted">Нет числовых карт для расчёта (например, все «?» или «☕»).</p>
+              )}
             </div>
           ) : (
-            <div className="notification is-light py-3 mb-4">
-              <p className="is-size-7 mb-0">
-                <strong>Оценка в процессе.</strong> Когда все поставят карты, нажмите «Открыть карты» — здесь появится итог.
+            <div className="notification is-info is-light mb-5">
+              <p className="mb-0">
+                <strong>Раунд идёт.</strong> Когда все выберут карты, нажмите «Открыть карты» — итог появится выше.
               </p>
             </div>
           )}
 
-          <p className="is-size-7 has-text-grey mb-2">Выберите оценку</p>
-          <div className="vote-grid mb-4">
+          <p className="title is-6 mb-3">Ваша оценка</p>
+          <div className="vote-grid mb-5">
             {state.room.deck.map((v) => (
               <button
                 key={v}
                 type="button"
-                className={
-                  "button is-small is-light" + (props.selectedVote === v ? " is-selected" : "")
-                }
+                className={"button is-light" + (props.selectedVote === v ? " is-selected" : "")}
                 disabled={state.room.revealed}
                 onClick={() => (state.room.revealed ? undefined : props.onVote(v))}
               >
@@ -717,54 +700,46 @@ function RoomView(props: {
           </div>
 
           <div className="buttons">
-            <button type="button" className="button is-primary is-small" onClick={props.onReveal} disabled={state.room.revealed}>
+            <button type="button" className="button is-primary is-medium" onClick={props.onReveal} disabled={state.room.revealed}>
               Открыть карты
             </button>
-            <button type="button" className="button is-small" onClick={props.onReset}>
+            <button type="button" className="button is-light" onClick={props.onReset}>
               Новый раунд
             </button>
           </div>
         </div>
       </div>
 
-      <div className="column is-12-tablet is-4-desktop">
-        <div className="box mb-3">
-          <p className="is-size-7 has-text-weight-semibold mb-2">Участники</p>
+      <div className="column is-12-tablet is-5-desktop">
+        <div className="pp-side-card">
+          <p className="pp-side-title">Участники</p>
           <ul className="mb-0" style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {state.users.map((u) => {
               const voted = !!state.voteStatus[u.id];
               const shown = state.votesRevealed[u.id];
               return (
-                <li
-                  key={u.id}
-                  className="is-flex is-justify-content-space-between is-align-items-center py-2"
-                  style={{ borderBottom: "1px solid #f0f0f0", gap: "0.5rem" }}
-                >
+                <li key={u.id} className="pp-participant-row">
                   <span>
-                    <span className="has-text-weight-medium">{u.name}</span>
-                    {u.role ? (
-                      <span className="tag is-info is-light is-small ml-1">{u.role}</span>
-                    ) : null}
-                    {u.id === state.room.hostId ? (
-                      <span className="tag is-primary is-light is-small ml-1">Ведущий</span>
-                    ) : null}
+                    <span className="has-text-weight-semibold">{u.name}</span>
+                    {u.role ? <span className="pp-chip is-accent ml-2">{u.role}</span> : null}
+                    {u.id === state.room.hostId ? <span className="pp-chip is-host ml-1">Ведущий</span> : null}
                   </span>
-                  <span className="tag is-light">{state.room.revealed ? (shown ?? "—") : voted ? "✓" : "…"}</span>
+                  <span className="pp-chip">{state.room.revealed ? (shown ?? "—") : voted ? "✓" : "…"}</span>
                 </li>
               );
             })}
           </ul>
         </div>
 
-        <div className="box">
-          <p className="is-size-7 has-text-weight-semibold mb-2">История оценок</p>
+        <div className="pp-side-card">
+          <p className="pp-side-title">История</p>
           {history.length === 0 ? (
-            <p className="is-size-7 has-text-grey">Пока нет завершённых раундов.</p>
+            <p className="pp-muted mb-0">Завершите раунд («Открыть карты»), чтобы запись появилась здесь.</p>
           ) : (
             <div className="history-scroll">
               {history.map((h) => (
-                <div key={`${h.roundId}-${h.revealedAt}`} className="box py-2 px-3 mb-2" style={{ background: "#fafafa" }}>
-                  <p className="has-text-weight-semibold is-size-7 mb-1">{h.title.trim() || "Без названия задачи"}</p>
+                <div key={`${h.roundId}-${h.revealedAt}`} className="pp-history-item">
+                  <p className="has-text-weight-semibold mb-1">{h.title.trim() || "Без названия"}</p>
                   <p className="is-size-7 has-text-grey mb-1">{formatRuDateTime(h.revealedAt)}</p>
                   <p className="is-size-7 mb-0">{summarizeGroupsRu(h.aggregates.groups)}</p>
                 </div>
