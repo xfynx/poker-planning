@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { io, Socket } from "socket.io-client";
+import { InviteLink } from "./InviteLink";
+import { useSeason } from "./season";
+
+function normalizeRoomCode(code: string) {
+  const trimmed = code.trim();
+  return trimmed.includes("-") ? trimmed.toLowerCase() : trimmed.toUpperCase();
+}
 
 const SESSION_STORAGE_KEY = "pokerplanning_session_v1";
 
@@ -120,6 +127,7 @@ function summarizeGroupsRu(groups: AggGroup[]): string {
 }
 
 export function App() {
+  const season = useSeason();
   const { slug } = useParams<{ slug?: string }>();
   const navigate = useNavigate();
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -132,7 +140,8 @@ export function App() {
   const [createRolesEnabled, setCreateRolesEnabled] = useState(true);
   const [titleDraft, setTitleDraft] = useState("");
   const [selectedVote, setSelectedVote] = useState<string | null>(null);
-  const [copyHint, setCopyHint] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [connBanner, setConnBanner] = useState<string | null>(null);
 
@@ -140,7 +149,7 @@ export function App() {
   const titleFocusedRef = useRef(false);
   const titleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (slug) setRoomCode(slug.toUpperCase());
+    if (slug) setRoomCode(normalizeRoomCode(slug));
   }, [slug]);
 
   useEffect(() => {
@@ -154,10 +163,10 @@ export function App() {
 
     function onDisconnect(reason: string) {
       if (reason === "io client disconnect") return;
-      setConnBanner("Связь с сервером прервана. Проверьте, что backend запущен, и обновите страницу.");
+      setConnBanner("Связь прервана. Пробуем подключиться снова…");
     }
     function onConnectError() {
-      setConnBanner("Не удаётся подключиться к серверу. Запустите backend (порт 3000) или Docker Compose.");
+      setConnBanner("Не удаётся подключиться. Проверьте соединение; мы попробуем снова автоматически.");
     }
 
     function onConnect() {
@@ -165,8 +174,8 @@ export function App() {
       const sess = loadSession();
       if (!sess) return;
       const m = window.location.pathname.match(/^\/r\/([^/]+)\/?$/i);
-      const pathCode = m ? m[1].toUpperCase() : null;
-      if (!pathCode || pathCode !== sess.roomCode.toUpperCase()) return;
+      const pathCode = m ? normalizeRoomCode(m[1]) : null;
+      if (!pathCode || pathCode !== normalizeRoomCode(sess.roomCode)) return;
       s.emit("room:resume", { roomCode: pathCode, userId: sess.userId }, (ack: { ok?: boolean; userId?: string }) => {
         if (ack?.ok && ack.userId) setUserId(ack.userId);
         else clearSession();
@@ -208,7 +217,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const code = roomCode.trim().toUpperCase();
+    const code = normalizeRoomCode(roomCode);
     if (!code) {
       setRolesEnabledForJoin(null);
       return;
@@ -239,7 +248,7 @@ export function App() {
   }, [state, userId]);
 
   const inviteUrl = useMemo(() => {
-    const code = (state?.room.code || roomCode).trim().toUpperCase();
+    const code = normalizeRoomCode(state?.room.code || roomCode);
     if (!code || typeof window === "undefined") return "";
     return `${window.location.origin}/r/${code}`;
   }, [state?.room.code, roomCode]);
@@ -248,41 +257,42 @@ export function App() {
 
   const joinBlockedByRole = rolesEnabledForJoin === true && !role;
   const canJoin =
+    !creating &&
     !!roomCode.trim() &&
     !!name.trim() &&
     !joinBlockedByRole &&
     !!socket;
 
-  async function copyInvite(url: string) {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopyHint("Скопировано");
-      setTimeout(() => setCopyHint(null), 2000);
-    } catch {
-      setCopyHint("Не удалось скопировать");
-      setTimeout(() => setCopyHint(null), 2500);
-    }
-  }
-
   async function createRoom() {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    setCreating(true);
     setJoinError(null);
-    const res = await fetch(apiPath("/rooms"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ rolesEnabled: createRolesEnabled })
-    });
-    if (!res.ok) {
-      setJoinError("Сервер не отвечает. Убедитесь, что backend запущен.");
-      return;
+    try {
+      const res = await fetch(apiPath("/rooms"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rolesEnabled: createRolesEnabled })
+      });
+      if (!res.ok) {
+        setJoinError("Сервер не отвечает. Попробуйте создать комнату ещё раз.");
+        return;
+      }
+      const json = (await res.json()) as { code?: string };
+      const code = json.code;
+      if (!code) {
+        setJoinError("Некорректный ответ сервера при создании комнаты.");
+        return;
+      }
+      setRoomCode(code);
+      setRolesEnabledForJoin(createRolesEnabled);
+      navigate(`/r/${code}`, { replace: true });
+    } catch {
+      setJoinError("Не удалось создать комнату. Проверьте соединение и попробуйте ещё раз.");
+    } finally {
+      creatingRef.current = false;
+      setCreating(false);
     }
-    const json = (await res.json()) as { code?: string };
-    const code = json.code;
-    if (!code) {
-      setJoinError("Некорректный ответ сервера при создании комнаты.");
-      return;
-    }
-    setRoomCode(code);
-    navigate(`/r/${code}`, { replace: true });
   }
 
   function joinRoom() {
@@ -290,7 +300,7 @@ export function App() {
     setJoinError(null);
     socket.emit(
       "room:join",
-      { roomCode: roomCode.trim().toUpperCase(), name: name.trim(), role: role || undefined },
+      { roomCode: normalizeRoomCode(roomCode), name: name.trim(), role: role || undefined },
       (ack: { ok?: boolean; userId?: string; error?: string }) => {
         if (!ack?.ok || !ack.userId) {
           if (ack?.error === "role_required") {
@@ -302,7 +312,7 @@ export function App() {
           }
           return;
         }
-        const c = roomCode.trim().toUpperCase();
+        const c = normalizeRoomCode(roomCode);
         saveSession(c, ack.userId);
         setUserId(ack.userId);
         setSelectedVote(null);
@@ -313,7 +323,7 @@ export function App() {
 
   function leaveRoom() {
     if (!socket || !userId) return;
-    const code = state?.room.code ?? roomCode.trim().toUpperCase();
+    const code = state?.room.code ?? normalizeRoomCode(roomCode);
     socket.emit("room:leave", {}, () => {});
     clearSession();
     setUserId(null);
@@ -378,6 +388,12 @@ export function App() {
           </div>
           <div className="navbar-menu is-active" style={{ boxShadow: "none" }}>
             <div className="navbar-end is-align-items-center" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+              <div className="navbar-item">
+                <span className="season-badge" title={season.mood}>
+                  <span className="season-mark" aria-hidden="true">{season.mark}</span>
+                  {season.name}<span className="season-mood">· {season.mood}</span>
+                </span>
+              </div>
               {state?.room?.code ? (
                 <div className="navbar-item">
                   <span className="tag is-info is-light is-medium">
@@ -420,7 +436,7 @@ export function App() {
                     <div className="notification is-info is-light mb-5">
                       <p className="has-text-weight-semibold mb-2">Вы по ссылке-приглашению</p>
                       <p className="is-size-7 mb-2">
-                        Код <span className="tag is-info">{slug.toUpperCase()}</span> — укажите <strong>имя</strong> и нажмите
+                        Код <span className="tag is-info">{normalizeRoomCode(slug)}</span> — укажите <strong>имя</strong> и нажмите
                         «Войти в комнату».
                       </p>
                       {rolesEnabledForJoin === true ? (
@@ -446,7 +462,10 @@ export function App() {
                             className="input"
                             value={roomCode}
                             onChange={(e) => setRoomCode(e.target.value)}
-                            placeholder="Например A1B2C3"
+                            placeholder="calm-amber-otter"
+                            maxLength={64}
+                            autoCapitalize="none"
+                            spellCheck={false}
                             autoComplete="off"
                           />
                         </div>
@@ -518,11 +537,12 @@ export function App() {
                   <hr />
 
                   <h2 className="title is-6 has-text-grey mb-4">Новая комната</h2>
-                  <div className="level is-mobile mb-4">
-                    <div className="level-left">
+                  <p className="help mb-3">Код из трёх случайных слов легко прочитать и передать команде.</p>
+                  <div className="mb-4">
+                    <div className="create-controls">
                       <div className="level-item">
-                        <button type="button" className="button is-light" onClick={createRoom}>
-                          Создать комнату
+                        <button type="button" className={"button is-light" + (creating ? " is-loading" : "")} onClick={createRoom} disabled={creating}>
+                          {creating ? "Создаём…" : "Создать комнату"}
                         </button>
                       </div>
                       <div className="level-item">
@@ -542,36 +562,7 @@ export function App() {
                     Отправьте коллегам ссылку <code>/r/КОД</code>. Сессия хранится в браузере.
                   </p>
 
-                  {roomCode.trim() && !slug ? (
-                    <div className="field has-addons" style={{ flexWrap: "wrap" }}>
-                      <div className="control is-expanded" style={{ minWidth: "220px" }}>
-                        <input
-                          readOnly
-                          className="input"
-                          value={
-                            inviteUrl ||
-                            `${typeof window !== "undefined" ? window.location.origin : ""}/r/${roomCode.trim().toUpperCase()}`
-                          }
-                        />
-                      </div>
-                      <div className="control">
-                        <button
-                          type="button"
-                          className="button is-primary is-light"
-                          onClick={() =>
-                            copyInvite(inviteUrl || `${window.location.origin}/r/${roomCode.trim().toUpperCase()}`)
-                          }
-                        >
-                          Копировать ссылку
-                        </button>
-                      </div>
-                      {copyHint ? (
-                        <div className="control">
-                          <span className="tag is-success is-light">{copyHint}</span>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
+                  {roomCode.trim() ? <InviteLink url={inviteUrl} /> : null}
                 </div>
               </div>
             </div>
@@ -588,8 +579,6 @@ export function App() {
               onReveal={reveal}
               onReset={resetRound}
               inviteUrl={inviteUrl}
-              onCopyInvite={copyInvite}
-              copyHint={copyHint}
             />
           )}
         </div>
@@ -610,8 +599,6 @@ function RoomView(props: {
   onReveal: () => void;
   onReset: () => void;
   inviteUrl: string;
-  onCopyInvite: (url: string) => void;
-  copyHint: string | null;
 }) {
   const { state, userId } = props;
   if (!state) {
@@ -665,26 +652,7 @@ function RoomView(props: {
             </div>
           </div>
 
-          <div className="field has-addons mb-5" style={{ flexWrap: "wrap" }}>
-            <div className="control is-expanded" style={{ minWidth: "200px" }}>
-              <input readOnly className="input" value={props.inviteUrl} />
-            </div>
-            <div className="control">
-              <button
-                type="button"
-                className="button is-primary is-light"
-                onClick={() => props.onCopyInvite(props.inviteUrl)}
-                disabled={!props.inviteUrl}
-              >
-                Скопировать ссылку
-              </button>
-            </div>
-            {props.copyHint ? (
-              <div className="control">
-                <span className="tag is-success is-light">{props.copyHint}</span>
-              </div>
-            ) : null}
-          </div>
+          <InviteLink url={props.inviteUrl} />
 
           <div className="field mb-5">
             <label className="label">Задача или тикет</label>

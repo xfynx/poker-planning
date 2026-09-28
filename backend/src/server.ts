@@ -6,6 +6,7 @@ import type { Socket } from "socket.io";
 import { createRedis } from "./redis.js";
 import { createRoomStore, CreateRoomInput, JoinRoomInput, ResumeRoomInput } from "./domain/roomStore.js";
 import { computeAggregates } from "./domain/stats.js";
+import { normalizeRoomCode } from "./domain/roomCode.js";
 import type { PublicRoomState, Role, RoundHistoryEntry, User, VoteAggregates } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -35,7 +36,7 @@ const store = createRoomStore(redis);
 app.get("/health", async () => ({ ok: true }));
 
 app.get("/rooms/:code", async (req: FastifyRequest, reply: FastifyReply) => {
-  const code = String((req.params as any)?.code ?? "").toUpperCase();
+  const code = normalizeRoomCode(String((req.params as any)?.code ?? ""));
   if (!code) return reply.code(400).send({ error: "bad_request" });
   const room = await store.getRoom(code);
   if (!room) return reply.code(404).send({ error: "room_not_found" });
@@ -91,7 +92,7 @@ io.on("connection", (socket: Socket) => {
     const parsed = ResumeRoomInput.safeParse(payload);
     if (!parsed.success) return ack?.({ ok: false, error: "bad_request" });
 
-    const code = parsed.data.roomCode.toUpperCase();
+    const code = parsed.data.roomCode;
     const room = await store.getRoom(code);
     if (!room) return ack?.({ ok: false, error: "room_not_found" });
 

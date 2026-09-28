@@ -2,10 +2,13 @@ name: pokerplanning
 
 services:
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    command: ["redis-server", "--appendonly", "no"]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -13,6 +16,7 @@ services:
       retries: 20
 
   backend:
+    restart: unless-stopped
     build:
       context: ./backend
       target: dev
@@ -32,6 +36,7 @@ services:
     profiles: ["dev"]
 
   frontend:
+    restart: unless-stopped
     build:
       context: ./frontend
       target: dev
@@ -48,6 +53,7 @@ services:
     profiles: ["dev"]
 
   backend_prod:
+    restart: unless-stopped
     build:
       context: ./backend
       target: prod
@@ -63,6 +69,7 @@ services:
     profiles: ["prod"]
 
   frontend_prod:
+    restart: unless-stopped
     build:
       context: ./frontend
     environment:
@@ -72,4 +79,7 @@ services:
     depends_on:
       - backend_prod
     profiles: ["prod"]
+
+volumes:
+  redis_data:
 

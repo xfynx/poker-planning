@@ -1,19 +1,22 @@
 import { z } from "zod";
 import type { Role, Room, RoundHistoryEntry, User } from "../types.js";
 import { DEFAULT_DECK } from "./deck.js";
+import { generateRoomCode, normalizeRoomCode } from "./roomCode.js";
+
+const roomCodeInput = z.string().trim().min(2).max(64).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/i).transform(normalizeRoomCode);
 
 export const CreateRoomInput = z.object({
   rolesEnabled: z.boolean().default(false)
 });
 
 export const JoinRoomInput = z.object({
-  roomCode: z.string().min(2).max(12),
+  roomCode: roomCodeInput,
   name: z.string().min(1).max(48),
   role: z.enum(["BA", "BE", "FE", "SA", "QA", "Other"]).optional()
 });
 
 export const ResumeRoomInput = z.object({
-  roomCode: z.string().min(2).max(12),
+  roomCode: roomCodeInput,
   userId: z.string().min(2).max(48)
 });
 
@@ -71,26 +74,28 @@ export function createRoomStore(redis: {
 
   return {
     async createRoom(rolesEnabled: boolean) {
-      const code = genRoomCode();
-      const now = Date.now();
-      const room: Room = {
-        code,
-        hostId: "",
-        createdAt: now,
-        rolesEnabled,
-        deck: DEFAULT_DECK,
-        activeRoundId: genRoundId(),
-        roundTitle: "",
-        revealed: false
-      };
-      await redis.set(roomKey(code), JSON.stringify(room));
-      await redis.expire(roomKey(code), TTL_SECONDS);
-      await touch(code);
-      return room;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const code = generateRoomCode();
+        const now = Date.now();
+        const room: Room = {
+          code,
+          hostId: "",
+          createdAt: now,
+          rolesEnabled,
+          deck: DEFAULT_DECK,
+          activeRoundId: genRoundId(),
+          roundTitle: "",
+          revealed: false
+        };
+        // Reserve atomically: concurrent requests must never overwrite an existing room.
+        const reserved = await redis.set(roomKey(code), JSON.stringify(room), "EX", TTL_SECONDS, "NX");
+        if (reserved === "OK") return room;
+      }
+      throw new Error("Unable to allocate a unique room code");
     },
 
     async getRoom(code: string) {
-      const raw = await redis.get(roomKey(code));
+      const raw = await redis.get(roomKey(normalizeRoomCode(code)));
       if (!raw) return null;
       return JSON.parse(raw) as Room;
     },
@@ -167,13 +172,6 @@ export function createRoomStore(redis: {
       return out;
     }
   } satisfies RoomStore;
-}
-
-function genRoomCode() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let s = "";
-  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
-  return s;
 }
 
 function genRoundId() {

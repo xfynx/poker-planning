@@ -3,6 +3,8 @@ dist
 .env
 .env.*
 .DS_Store
+.local/
+*.tsbuildinfo
 
 # Vite
 frontend/dist

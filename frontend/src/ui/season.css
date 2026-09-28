@@ -1,0 +1,74 @@
+:root {
+  --season-hue: 207;
+  --season-accent: #306382;
+  --season-glow: #dfedf8;
+  --season-paper: #f5f8fc;
+  --season-border: hsl(var(--season-hue) 26% 84%);
+  --bulma-primary-h: var(--season-hue);
+  --bulma-primary-s: 38%;
+  --bulma-primary-l: 36%;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--season-paper);
+  background-image: radial-gradient(ellipse at 0 5%, var(--season-glow), transparent 55%),
+    radial-gradient(ellipse at 100% 95%, var(--season-glow), transparent 45%);
+  background-attachment: fixed;
+}
+
+.navbar.is-light {
+  background: #ffffffeb;
+  border-bottom: 1px solid var(--season-border);
+  box-shadow: 0 2px 12px #23304306;
+}
+
+.box {
+  border: 1px solid var(--season-border);
+  border-top: 3px solid var(--season-glow);
+  border-radius: 14px;
+  box-shadow: 0 6px 24px #23304307;
+}
+
+.has-text-primary { color: var(--season-accent) !important; }
+.button.is-primary {
+  --bulma-button-h: var(--season-hue);
+  --bulma-button-s: 38%;
+  --bulma-button-l: 36%;
+  --bulma-button-color-l: 100%;
+}
+.button.is-primary.is-light {
+  background: var(--season-glow);
+  color: var(--season-accent);
+}
+.button.is-primary.is-light:hover { filter: brightness(0.97); }
+.input:focus, .select select:focus {
+  border-color: var(--season-accent);
+  box-shadow: 0 0 0 3px var(--season-glow);
+}
+.season-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--season-accent);
+  font-size: 0.8rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--season-border);
+  border-radius: 999px;
+  background: var(--season-paper);
+  white-space: nowrap;
+}
+.season-mark { font-size: 1.1rem; line-height: 1; }
+.season-mood { opacity: 0.8; }
+.invite-controls { display: flex; gap: 0.5rem; }
+.invite-controls .input { min-width: 0; flex: 1; }
+.create-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.navbar .tag { height: auto; white-space: normal; overflow-wrap: anywhere; }
+
+@media (max-width: 600px) {
+  .section { padding: 1.5rem 1rem; }
+  .box { padding: 1.25rem; }
+  .invite-controls { flex-direction: column; }
+  .season-mood { display: none; }
+  .navbar-end { display: flex; }
+}
