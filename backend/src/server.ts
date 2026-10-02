@@ -168,6 +168,21 @@ io.on("connection", (socket: Socket) => {
     return ack?.({ ok: true });
   });
 
+  socket.on("round:setEstimate", async (payload: any, ack?: (v: any) => void) => {
+    if (!ctx.roomCode || !ctx.userId) return ack?.({ ok: false, error: "not_joined" });
+    const room = await store.getRoom(ctx.roomCode);
+    if (!room) return ack?.({ ok: false, error: "room_not_found" });
+    if (!room.revealed) return ack?.({ ok: false, error: "not_revealed" });
+
+    const groupKey = typeof payload?.groupKey === "string" ? payload.groupKey.slice(0, 32) : "";
+    const value = typeof payload?.value === "string" ? payload.value.slice(0, 32) : "";
+    if (!groupKey) return ack?.({ ok: false, error: "bad_request" });
+
+    await store.setEstimate(room.code, room.activeRoundId, groupKey, value);
+    await emitRoomState(room.code);
+    return ack?.({ ok: true });
+  });
+
   socket.on("round:reset", async (_payload: unknown, ack?: (v: any) => void) => {
     if (!ctx.roomCode || !ctx.userId) return ack?.({ ok: false, error: "not_joined" });
     const room = await store.getRoom(ctx.roomCode);
@@ -192,7 +207,13 @@ async function emitRoomState(code: string) {
   if (!room) return;
   const users = await store.listUsers(code);
   const votes = await store.getVotes(code, room.activeRoundId);
-  const history = await store.listHistory(code);
+  const rawHistory = await store.listHistory(code);
+
+  const history: RoundHistoryEntry[] = [];
+  for (const entry of rawHistory) {
+    const estimates = await store.getEstimates(code, entry.roundId);
+    history.push(Object.keys(estimates).length > 0 ? { ...entry, estimates } : entry);
+  }
 
   const voteStatus: Record<string, boolean> = {};
   for (const u of users) voteStatus[u.id] = typeof votes[u.id] === "string" || votes[u.id] === null;

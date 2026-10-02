@@ -36,6 +36,9 @@ export type RoomStore = {
 
   appendHistory(code: string, entry: RoundHistoryEntry): Promise<void>;
   listHistory(code: string): Promise<RoundHistoryEntry[]>;
+
+  setEstimate(code: string, roundId: string, groupKey: string, value: string): Promise<void>;
+  getEstimates(code: string, roundId: string): Promise<Record<string, string>>;
 };
 
 function roomKey(code: string) {
@@ -49,6 +52,9 @@ function votesKey(code: string, roundId: string) {
 }
 function historyKey(code: string) {
   return `room:${code}:history`;
+}
+function estimatesKey(code: string, roundId: string) {
+  return `room:${code}:estimates:${roundId}`;
 }
 
 export function createRoomStore(redis: {
@@ -170,6 +176,17 @@ export function createRoomStore(redis: {
         }
       }
       return out;
+    },
+
+    async setEstimate(code: string, roundId: string, groupKey: string, value: string) {
+      await redis.hset(estimatesKey(code, roundId), groupKey, value);
+      await redis.expire(estimatesKey(code, roundId), TTL_SECONDS);
+      await touch(code);
+    },
+
+    async getEstimates(code: string, roundId: string) {
+      const raw = (await redis.hgetall(estimatesKey(code, roundId))) as Record<string, string>;
+      return raw ?? {};
     }
   } satisfies RoomStore;
 }

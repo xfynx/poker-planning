@@ -5,6 +5,7 @@ dist
 .DS_Store
 .local/
 *.tsbuildinfo
+docker-compose.override.yml
 
 # Vite
 frontend/dist

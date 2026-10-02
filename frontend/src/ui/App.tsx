@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { io, Socket } from "socket.io-client";
-import { InviteLink } from "./InviteLink";
+import { InviteLink, copyText } from "./InviteLink";
 import { useSeason } from "./season";
 
 function normalizeRoomCode(code: string) {
@@ -40,6 +40,7 @@ type RoundHistoryEntry = {
   revealedAt: number;
   votes: Array<{ userId: string; name: string; role?: Role; value: string | null }>;
   aggregates: { mode: "overall" | "byRole"; groups: AggGroup[] };
+  estimates?: Record<string, string>;
 };
 
 type RoomState = {
@@ -116,14 +117,38 @@ function formatRuDateTime(ts: number): string {
   return new Date(ts).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
 }
 
-function summarizeGroupsRu(groups: AggGroup[]): string {
+function summarizeGroupsRu(groups: AggGroup[], estimates?: Record<string, string>): string {
   if (!groups.length) return "Нет числовых оценок для расчёта.";
   return groups
-    .map(
-      (g) =>
-        `${g.label}: среднее ${fmtNum(g.mean)}, медиана ${fmtNum(g.median)} · оценок: ${g.count}`
-    )
+    .map((g) => {
+      const est = estimates && estimates[g.key] !== undefined && estimates[g.key] !== "" ? `итог ${estimates[g.key]}, ` : "";
+      return `${g.label}: ${est}среднее ${fmtNum(g.mean)}, медиана ${fmtNum(g.median)} · оценок: ${g.count}`;
+    })
     .join("  |  ");
+}
+
+function defaultEstimate(group: AggGroup): string {
+  if (typeof group.mean !== "number") return "";
+  return String(Math.round(group.mean));
+}
+
+function exportHistoryText(history: RoundHistoryEntry[]): string {
+  const lines: string[] = [];
+  for (const h of history) {
+    const title = h.title?.trim();
+    if (!title) continue;
+    const parts: string[] = [];
+    for (const g of h.aggregates?.groups ?? []) {
+      const est = h.estimates?.[g.key]?.trim();
+      const value = est && est !== "" ? est : defaultEstimate(g);
+      if (value === "") continue;
+      if (h.aggregates.mode === "overall") parts.push(value);
+      else parts.push(`${g.label}: ${value}`);
+    }
+    if (!parts.length) continue;
+    lines.push(`${title} - ${parts.join(", ")}`);
+  }
+  return `оценки задач:\n${lines.join("\n")}`;
 }
 
 export function App() {
@@ -337,6 +362,11 @@ export function App() {
     if (!socket) return;
     setSelectedVote(v);
     socket.emit("vote:set", { value: v });
+  }
+
+  function setEstimate(groupKey: string, value: string) {
+    if (!socket) return;
+    socket.emit("round:setEstimate", { groupKey, value });
   }
 
   function reveal() {
@@ -577,6 +607,7 @@ export function App() {
               onVote={setVote}
               selectedVote={selectedVote}
               onReveal={reveal}
+              onSetEstimate={setEstimate}
               onReset={resetRound}
               inviteUrl={inviteUrl}
             />
@@ -584,6 +615,68 @@ export function App() {
         </div>
       </section>
     </>
+  );
+}
+
+function EstimateConfirm(props: {
+  groupKey: string;
+  label: string;
+  value: string;
+  onCommit: (groupKey: string, value: string) => void;
+}) {
+  const [draft, setDraft] = useState(props.value);
+  const focusedRef = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!focusedRef.current) setDraft(props.value);
+  }, [props.value]);
+
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
+  function onChange(v: string) {
+    setDraft(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => props.onCommit(props.groupKey, v.trim()), 400);
+  }
+
+  function flush() {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+      props.onCommit(props.groupKey, draft.trim());
+    }
+  }
+
+  return (
+    <div className="field is-horizontal mb-3">
+      <div className="field-label is-normal" style={{ flexGrow: 0 }}>
+        <label className="label">{props.label}</label>
+      </div>
+      <div className="field-body">
+        <div className="field">
+          <div className="control">
+            <input
+              className="input"
+              value={draft}
+              onChange={(e) => onChange(e.target.value)}
+              onFocus={() => {
+                focusedRef.current = true;
+              }}
+              onBlur={() => {
+                focusedRef.current = false;
+                flush();
+              }}
+              placeholder="Итоговая оценка"
+              inputMode="decimal"
+            />
+          </div>
+          <p className="help">Сохраняется автоматически, появится в истории.</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -597,10 +690,15 @@ function RoomView(props: {
   onVote: (v: string) => void;
   selectedVote: string | null;
   onReveal: () => void;
+  onSetEstimate: (groupKey: string, value: string) => void;
   onReset: () => void;
   inviteUrl: string;
 }) {
   const { state, userId } = props;
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportText, setExportText] = useState("");
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   if (!state) {
     return (
       <div className="columns is-centered">
@@ -615,6 +713,8 @@ function RoomView(props: {
 
   const me = state.users.find((u) => u.id === userId);
   const history = state.history ?? [];
+  const activeHistory = history.find((h) => h.roundId === state.room.activeRoundId);
+  const activeEstimates = activeHistory?.estimates ?? {};
 
   const primarySummary =
     state.room.revealed && state.aggregates.groups.length
@@ -706,6 +806,29 @@ function RoomView(props: {
               ) : (
                 <p className="has-text-grey">Нет числовых карт для расчёта (например, все «?» или «☕»).</p>
               )}
+
+              {state.room.revealed && state.aggregates.groups.length > 0 ? (
+                <div className="box has-background-white-bis mt-4 mb-0">
+                  <p className="has-text-weight-bold mb-1">Подтверждение оценки</p>
+                  <p className="is-size-7 has-text-grey mb-3">
+                    Итоговая оценка по группам. Значение сохранено автоматически и попадёт в историю и выгрузку.
+                  </p>
+                  {state.aggregates.groups.map((g) => {
+                    const saved = activeEstimates[g.key];
+                    const value =
+                      saved !== undefined && saved !== "" ? saved : defaultEstimate(g) || "";
+                    return (
+                      <EstimateConfirm
+                        key={g.key}
+                        groupKey={g.key}
+                        label={g.label}
+                        value={value}
+                        onCommit={props.onSetEstimate}
+                      />
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="notification is-info is-light mb-5">
@@ -736,7 +859,7 @@ function RoomView(props: {
             <button type="button" className="button is-primary is-medium" onClick={props.onReveal} disabled={state.room.revealed}>
               Открыть карты
             </button>
-            <button type="button" className="button is-light" onClick={props.onReset}>
+            <button type="button" className="button is-light" onClick={() => setResetConfirmOpen(true)}>
               Новый раунд
             </button>
           </div>
@@ -771,7 +894,22 @@ function RoomView(props: {
         </div>
 
         <div className="box">
-          <p className="is-size-7 has-text-weight-bold has-text-grey mb-3">ИСТОРИЯ</p>
+          <div className="is-flex is-align-items-center is-justify-content-space-between mb-3">
+            <p className="is-size-7 has-text-weight-bold has-text-grey mb-0">ИСТОРИЯ</p>
+            {history.length > 0 ? (
+              <button
+                type="button"
+                className="button is-small is-light"
+                onClick={() => {
+                  setExportText(exportHistoryText(history));
+                  setCopied(false);
+                  setExportOpen(true);
+                }}
+              >
+                Выгрузить историю
+              </button>
+            ) : null}
+          </div>
           {history.length === 0 ? (
             <p className="is-size-7 has-text-grey mb-0">Завершите раунд («Открыть карты»), чтобы запись появилась здесь.</p>
           ) : (
@@ -780,11 +918,78 @@ function RoomView(props: {
                 <div key={`${h.roundId}-${h.revealedAt}`} className="box py-3 px-4 mb-3">
                   <p className="has-text-weight-semibold mb-1">{h.title.trim() || "Без названия"}</p>
                   <p className="is-size-7 has-text-grey mb-1">{formatRuDateTime(h.revealedAt)}</p>
-                  <p className="is-size-7 mb-0">{summarizeGroupsRu(h.aggregates.groups)}</p>
+                  <p className="is-size-7 mb-0">{summarizeGroupsRu(h.aggregates.groups, h.estimates)}</p>
                 </div>
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      <div className={exportOpen ? "modal is-active" : "modal"}>
+        <div className="modal-background" onClick={() => setExportOpen(false)} />
+        <div className="modal-card">
+          <header className="modal-card-head">
+            <p className="modal-card-title">История оценок</p>
+            <button type="button" className="delete" aria-label="close" onClick={() => setExportOpen(false)} />
+          </header>
+          <section className="modal-card-body">
+            <p className="is-size-7 has-text-grey mb-2">
+              Скопируйте текст — он готов для проставления оценок по задачам.
+            </p>
+            <textarea
+              className="textarea is-family-code"
+              rows={14}
+              value={exportText}
+              onChange={(e) => setExportText(e.target.value)}
+            />
+          </section>
+          <footer className="modal-card-foot is-justify-content-flex-end" style={{ gap: "0.5rem" }}>
+            <button
+              type="button"
+              className={"button is-primary" + (copied ? " is-success is-light" : "")}
+              onClick={async () => {
+                const ok = await copyText(exportText);
+                setCopied(ok);
+                if (ok) setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? "Скопировано ✓" : "Скопировать"}
+            </button>
+            <button type="button" className="button" onClick={() => setExportOpen(false)}>
+              Закрыть
+            </button>
+          </footer>
+        </div>
+      </div>
+
+      <div className={resetConfirmOpen ? "modal is-active" : "modal"}>
+        <div className="modal-background" onClick={() => setResetConfirmOpen(false)} />
+        <div className="modal-card">
+          <header className="modal-card-head">
+            <p className="modal-card-title">Новый раунд</p>
+            <button type="button" className="delete" aria-label="close" onClick={() => setResetConfirmOpen(false)} />
+          </header>
+          <section className="modal-card-body">
+            <p>
+              Начать новый раунд? Итоговые оценки по этой задаче сохранятся в истории, и поля подтверждения закроются.
+            </p>
+          </section>
+          <footer className="modal-card-foot is-justify-content-flex-end">
+            <button
+              type="button"
+              className="button is-primary"
+              onClick={() => {
+                setResetConfirmOpen(false);
+                props.onReset();
+              }}
+            >
+              Начать новый раунд
+            </button>
+            <button type="button" className="button" onClick={() => setResetConfirmOpen(false)}>
+              Отмена
+            </button>
+          </footer>
         </div>
       </div>
     </div>

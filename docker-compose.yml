@@ -20,6 +20,8 @@ services:
     build:
       context: ./backend
       target: dev
+      secrets:
+        - npm_ca
     environment:
       - NODE_ENV=development
       - PORT=3000
@@ -40,6 +42,8 @@ services:
     build:
       context: ./frontend
       target: dev
+      secrets:
+        - npm_ca
     environment:
       - VITE_PROXY_TARGET=http://backend:3000
     ports:
@@ -82,4 +86,8 @@ services:
 
 volumes:
   redis_data:
+
+secrets:
+  npm_ca:
+    file: ${NPM_CA_FILE:-~/.secrets/kaspersky-ca.pem}
 

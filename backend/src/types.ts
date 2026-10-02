@@ -41,6 +41,8 @@ export type RoundHistoryEntry = {
     value: string | null;
   }>;
   aggregates: VoteAggregates;
+  /** Подтверждённые итоговые оценки по группам (ключ — группа, например role или Overall). */
+  estimates?: Record<string, string>;
 };
 
 export type PublicRoomState = {
